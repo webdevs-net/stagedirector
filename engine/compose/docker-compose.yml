@@ -1,0 +1,47 @@
+# Stage Director engine: one self-hosted GitHub Actions runner with the deploy tools.
+#
+#   cp .env.example .env    # fill it in
+#   docker compose up -d --build
+#
+# Portable: nothing host-specific lives here. Everything comes from .env. A second runner
+# (another repo, another host, another label) is another folder or another .env with its own
+# COMPOSE_PROJECT_NAME. Re-running `up -d` is safe; registration is kept in the `state` volume.
+#
+# Docker access is OFF by default: a job that can reach the Docker socket is root on the host.
+# Turn it on only for a runner that must run `docker compose` on its own host:
+#   docker compose -f docker-compose.yml -f docker-socket.yml up -d
+
+name: ${COMPOSE_PROJECT_NAME:-stagedirector-runner}
+
+services:
+  runner:
+    build:
+      context: .
+      args:
+        RUNNER_VERSION: ${RUNNER_VERSION:-2.321.0}
+        WRANGLER_VERSION: ${WRANGLER_VERSION:-3.99.0}
+    image: stagedirector-runner:${RUNNER_VERSION:-2.321.0}
+    restart: unless-stopped
+    environment:
+      GITHUB_URL: ${GITHUB_URL:?set GITHUB_URL in .env}
+      RUNNER_NAME: ${RUNNER_NAME:?set RUNNER_NAME in .env}
+      RUNNER_LABELS: ${RUNNER_LABELS:-self-hosted}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    volumes:
+      - state:/home/runner/state
+      - work:/home/runner/_work
+      - ${SSH_CONFIG_DIR:-./ssh}:/home/runner/ssh-config:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: ${RUNNER_MEMORY:-900m}
+    memswap_limit: ${RUNNER_MEMORY:-900m}
+    cpus: ${RUNNER_CPUS:-1.0}
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  state:
+  work:

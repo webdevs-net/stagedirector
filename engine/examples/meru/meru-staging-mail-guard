@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Host-side guard for Meru staging (GUARD= in /etc/stagedirector/meru-staging.env). Exits 0 only
+# when staging cannot mail anyone outside the company's internal test list. Runs before every
+# staging deploy. Reads live's .env read-only; never changes anything. NOT RUN YET.
+set -euo pipefail
+STAGING_ENV="${MERU_STAGING_ENV:-/opt/stg-meru/.env}"
+LIVE_ENV="${MERU_LIVE_ENV:-/opt/meru-pipeline/.env}"
+fail() { echo "mail guard: REFUSED: $*" >&2; exit 1; }
+get() { sed -n "s/^$2=//p" "$1" | tail -1 | tr -d '"'"'"' ' | tr '[:upper:]' '[:lower:]'; }
+ADDR_RE='^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$'
+
+[ -f "$STAGING_ENV" ] || fail "missing $STAGING_ENV"
+[ -r "$LIVE_ENV" ] || fail "cannot read live's $LIVE_ENV (needed for the internal test list)"
+[ "${COMPOSE_PROJECT_NAME:-}" = meru-stg-pipeline ] || fail "unexpected project ${COMPOSE_PROJECT_NAME:-none}"
+
+# 1. Allowlist = a non-empty subset of live's internal test list (GATEWAY_CAP_EXEMPT_RECIPIENTS).
+internal="$(get "$LIVE_ENV" GATEWAY_CAP_EXEMPT_RECIPIENTS)"
+allow="$(get "$STAGING_ENV" GATEWAY_RECIPIENT_ALLOWLIST)"
+[ -n "$internal" ] || fail "live has no internal test list (GATEWAY_CAP_EXEMPT_RECIPIENTS is empty)"
+[ -n "$allow" ] || fail "staging GATEWAY_RECIPIENT_ALLOWLIST is empty"
+IFS=, read -r -a ALLOW <<<"$allow"
+for a in "${ALLOW[@]}"; do
+  [[ "$a" =~ $ADDR_RE ]] || fail "allowlist entry is not a bare address"
+  [[ ",$internal," == *",$a,"* ]] || fail "allowlist has an address that is not on live's internal test list"
+done
+
+# 2. Own sendgw registry, small caps.
+dir="$(sed -n 's/^STAGING_SENDGW_DIR=//p' "$STAGING_ENV" | tail -1)"
+[ -n "$dir" ] && [ "$dir" != /opt/meru-pipeline/sendgw ] || fail "STAGING_SENDGW_DIR must be staging's own folder"
+python3 - "$dir/domains.json" "${STAGING_DAILY_CAP_MAX:-25}" <<'PY' || fail "staging domains.json caps above the limit, or unreadable"
+import json, sys
+d = json.load(open(sys.argv[1]))["domains"]
+sys.exit(0 if all(int(x.get("daily_cap", 0)) <= int(sys.argv[2]) for x in d) else 1)
+PY
+
+# 3. Staging Mautic: cron off, and no contact outside the allowlist.
+if docker ps --format '{{.Names}}' | grep -q '^stg-meru-mautic.*cron'; then fail "staging Mautic cron is running (it is off by default)"; fi
+db="$(sed -n 's/^STAGING_MAUTIC_DB=//p' "$STAGING_ENV" | tail -1)"
+prefix="$(sed -n 's/^STAGING_MAUTIC_TABLE_PREFIX=//p' "$STAGING_ENV" | tail -1)"
+[[ "$db" =~ ^stg-meru-mautic[a-z0-9_-]*$ ]] || fail "STAGING_MAUTIC_DB must be a stg-meru-mautic* container"
+[[ "$prefix" =~ ^[A-Za-z0-9_]*$ ]] || fail "bad STAGING_MAUTIC_TABLE_PREFIX"
+in_list="$(printf "'%s'," "${ALLOW[@]}")"; in_list="${in_list%,}"   # safe: every entry matched ADDR_RE
+sql="SELECT COUNT(*) FROM ${prefix}leads WHERE email IS NOT NULL AND email <> '' AND LOWER(email) NOT IN ($in_list);"
+n="$(docker exec -i "$db" sh -c 'exec mysql -N -B -u"${MYSQL_USER:-$MARIADB_USER}" -p"${MYSQL_PASSWORD:-$MARIADB_PASSWORD}" "${MYSQL_DATABASE:-$MARIADB_DATABASE}"' <<<"$sql" 2>/dev/null)" \
+  || fail "cannot query staging Mautic database in $db"
+[[ "$n" =~ ^[0-9]+$ ]] || fail "unexpected answer from staging Mautic database"
+[ "$n" -eq 0 ] || fail "$n contact(s) in staging Mautic are not on the allowlist. Run scrub-mautic-contacts.sql on staging first."
+
+echo "mail guard: ok (${#ALLOW[@]} allowed address(es), 0 other contacts)"

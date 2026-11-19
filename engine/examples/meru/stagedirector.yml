@@ -1,0 +1,29 @@
+# Example stagedirector.yml for Meru (netdevs-net/Meru). <...> are owner placeholders.
+version: 1
+name: Meru
+group: Meru
+kind: Docker · vultr1 + Cloudflare Workers
+branch: main
+stages:
+  - id: local
+    name: Local
+    pushers: none
+    trigger: manual
+  - id: staging
+    name: Staging
+    url: https://staging.webdevsteam.com/    # behind Cloudflare Access (sign-in page); see README
+    pushers: developers
+    trigger: auto
+    deploy: deploy/stagedirector.sh staging
+    rollback: deploy/stagedirector.sh rollback staging {backup}
+    smokeTest: [/healthz]                   # TODO: dashboard login, unsub and booking pages
+    runner: github                          # GitHub-hosted job -> Tailscale -> forced-command SSH
+  - id: live
+    name: Live
+    url: https://<live-host>/
+    pushers: code-owners
+    trigger: manual
+    deploy: deploy/stagedirector.sh live
+    rollback: deploy/stagedirector.sh rollback live {backup}
+    smokeTest: [/healthz]
+    runner: github

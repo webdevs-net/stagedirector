@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+#
+# Stage Director remote deploy for Docker Compose projects. Runs ON the host as an SSH
+# FORCED COMMAND, one key per project+stage. NOT RUN YET; the owner installs it by hand.
+#
+#   authorized_keys (deploy user on the host), one line per key:
+#     command="/usr/local/bin/stagedirector-remote meru staging",restrict ssh-ed25519 AAAA... stagedirector-meru-staging
+#
+# The project and stage come from the key's line, never from the caller. The caller (the
+# Stage Director workflow) may only send one of:
+#     deploy <40-char sha> [github-login]
+#     rollback <backup id>        (the backup id is the sha that was running before)
+#     status
+#
+# Per project+stage settings: /etc/stagedirector/<project>-<stage>.env (see example.env).
+# Exit codes follow engine/contract.md: 0 ok, 2 refused (nothing changed), 1 failed (rolled back
+# when possible). Prints STAGEDIRECTOR_BACKUP=<id> before changing anything.
+#
+# Never runs `docker compose down`, never removes volumes, and always passes the explicit
+# project name, so staging can never touch live's containers or data.
+
+set -euo pipefail
+umask 022
+
+die()  { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+log()  { printf '%s %s %s %s\n' "$(date -u +%FT%TZ)" "$PROJECT" "$STAGE" "$*" | tee -a "$LOG_FILE" >&2; }
+
+PROJECT="${1:-}"; STAGE="${2:-}"
+[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || die "bad project in authorized_keys"
+[[ "$STAGE" =~ ^[a-z0-9][a-z0-9-]{0,19}$ ]]   || die "bad stage in authorized_keys"
+CONF="/etc/stagedirector/$PROJECT-$STAGE.env"
+[ -f "$CONF" ] || die "missing $CONF"
+
+# Settings (plain KEY=value lines; not executed as a script).
+get() { sed -n "s/^$1=//p" "$CONF" | tail -1; }
+COMPOSE_PROJECT_NAME="$(get COMPOSE_PROJECT_NAME)"
+APP_DIR="$(get APP_DIR)"
+COMPOSE_FILES="$(get COMPOSE_FILES)"
+ENV_FILES="$(get ENV_FILES)"
+PROTECTED_PROJECTS="$(get PROTECTED_PROJECTS)"
+HEALTH_TIMEOUT="$(get HEALTH_TIMEOUT)"; HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+GUARD="$(get GUARD)"
+STATE_DIR="/var/lib/stagedirector/$PROJECT-$STAGE"
+LOG_FILE="$STATE_DIR/deploy.log"
+
+[[ "$COMPOSE_PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]+$ ]] || die "COMPOSE_PROJECT_NAME missing or invalid in $CONF"
+for p in ${PROTECTED_PROJECTS//,/ }; do
+  [ "$p" != "$COMPOSE_PROJECT_NAME" ] || die "$COMPOSE_PROJECT_NAME is a protected project (PROTECTED_PROJECTS); this key may not touch it"
+done
+[ -d "$APP_DIR/.git" ] || die "APP_DIR $APP_DIR is not a git checkout"
+[[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || die "bad HEALTH_TIMEOUT"
+install -d -m 750 "$STATE_DIR"; touch "$LOG_FILE"
+
+dc() {
+  local args=(-p "$COMPOSE_PROJECT_NAME") f
+  for f in ${COMPOSE_FILES//,/ }; do args+=(-f "$APP_DIR/$f"); done
+  for f in ${ENV_FILES//,/ }; do args+=(--env-file "$f"); done
+  docker compose "${args[@]}" "$@"
+}
+current() { git -C "$APP_DIR" rev-parse HEAD; }
+
+wait_healthy() { # every container in the project running, and healthy where it has a healthcheck
+  local waited=0 bad cid st
+  while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
+    bad=0
+    for cid in $(dc ps -q); do
+      st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo missing)"
+      case "$st" in healthy|running) ;; *) bad=1 ;; esac
+    done
+    [ -n "$(dc ps -q)" ] && [ "$bad" -eq 0 ] && return 0
+    sleep 5; waited=$((waited + 5))
+  done
+  return 1
+}
+
+run_guard() { # optional host-side check, e.g. staging mail safety; must exit 0
+  [ -z "$GUARD" ] && return 0
+  [ -x "$GUARD" ] || die "GUARD $GUARD is not an executable file"
+  STAGEDIRECTOR_PROJECT="$PROJECT" STAGEDIRECTOR_STAGE="$STAGE" COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" "$GUARD" \
+    || die "guard $GUARD refused this deploy"
+}
+
+switch_to() { # check out $1 and start it
+  git -C "$APP_DIR" -c advice.detachedHead=false checkout -q --detach "$1"
+  dc up -d --build --remove-orphans
+}
+
+lock="$STATE_DIR/.lock"
+mkdir "$lock" 2>/dev/null || die "another deploy for $PROJECT $STAGE is running (remove $lock if stale)"
+trap 'rmdir "$lock"' EXIT
+
+read -r CMD ARG BY EXTRA <<<"${SSH_ORIGINAL_COMMAND:-status}"
+[ -z "${EXTRA:-}" ] || die "too many arguments"
+
+case "$CMD" in
+  status)
+    sha="$(current)"; at="$(git -C "$APP_DIR" log -1 --format=%cI 2>/dev/null || true)"
+    by="$(sed -n "s/^.* deployed $sha by \([^ ]*\).*/\1/p" "$LOG_FILE" | tail -1)"
+    printf '[{"stageId":"%s","commit":"%s","deployedAt":%s,"deployedBy":%s,"behindBy":0,"outOfSync":[],"pinned":false}]\n' \
+      "$STAGE" "$sha" "$( [ -n "$at" ] && printf '"%s"' "$at" || echo null)" "$( [ -n "$by" ] && printf '"%s"' "$by" || echo null)"
+    ;;
+
+  deploy)
+    [[ "${ARG:-}" =~ ^[0-9a-f]{40}$ ]] || die "deploy needs a full 40-character sha"
+    [[ "${BY:-stagedirector}" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || die "bad login"
+    git -C "$APP_DIR" fetch -q origin "$ARG" || die "cannot fetch $ARG (does the host's read-only deploy key work?)"
+    git -C "$APP_DIR" cat-file -e "$ARG^{commit}" || die "commit $ARG not found"
+    PREV="$(current)"
+    run_guard
+    echo "STAGEDIRECTOR_BACKUP=$PREV"
+    log "deploying $ARG (was $PREV) as $COMPOSE_PROJECT_NAME"
+    if switch_to "$ARG" && wait_healthy; then
+      log "deployed $ARG by ${BY:-stagedirector}"
+      exit 0
+    fi
+    log "FAILED $ARG; putting $PREV back"
+    if switch_to "$PREV" && wait_healthy; then log "rolled back to $PREV"; else log "ROLLBACK FAILED; check now"; fi
+    exit 1
+    ;;
+
+  rollback)
+    [ -z "${BY:-}" ] || [[ "$BY" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || die "bad login"
+    [[ "${ARG:-}" =~ ^[0-9a-f]{40}$ ]] || die "rollback needs the backup id (a full sha)"
+    git -C "$APP_DIR" cat-file -e "$ARG^{commit}" || die "backup $ARG not in $APP_DIR"
+    log "rollback to $ARG (was $(current))"
+    switch_to "$ARG" && wait_healthy && { log "rolled back to $ARG"; exit 0; }
+    log "ROLLBACK FAILED; check now"; exit 1
+    ;;
+
+  *) die "allowed: deploy <sha> | rollback <id> | status" ;;
+esac

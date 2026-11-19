@@ -1,0 +1,9 @@
+# Opt-in: give jobs the host's Docker (for projects whose deploy runs `docker compose` on the
+# same host). This makes jobs root on the host. Meru does NOT use this: see ../kits/ssh-compose/;
+# use it only on a runner whose label is used by that one project.
+services:
+  runner:
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID in .env}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
