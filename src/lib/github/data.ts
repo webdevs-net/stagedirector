@@ -8,6 +8,10 @@ import * as authMod from "@/lib/auth/auth";
 import { changesBetween, defaultBranchHead, readConfig, recentRuns, resolveRunStage, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
+import { invalidate, swr } from "./swr";
+
+/** Page reads newer than this are served as is; older ones are served and refreshed behind. */
+const FRESH_MS = 20_000;
 
 /** "github" when credentials are set, "sample" when running on built-in sample data. */
 export function dataSource(): "github" | "sample" {
@@ -25,7 +29,9 @@ function storeFor(gh: Octokit | null): EventStore {
 }
 
 async function loadConfig(gh: Octokit, repo: string): Promise<ProjectConfig | null> {
-  const r = await readConfig(gh, repo).catch(() => null);
+  // A missing or invalid file means "no project"; a GitHub error (rate limit, network) throws,
+  // so cached reads keep the last good answer instead of showing the project as gone.
+  const r = await readConfig(gh, repo);
   return r && r.ok ? r.config : null;
 }
 
@@ -57,20 +63,24 @@ async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login
 }
 
 /** Every configured repo that has a valid stagedirector.yml. `login` drives needsMe. */
-export async function getProjects(login: string | null = null): Promise<ProjectSummary[]> {
+export async function getProjects(login: string | null = null, waitMs = 0): Promise<ProjectSummary[]> {
   const gh = getOctokit();
   if (!gh) return sampleProjects;
   const repos = configuredRepos();
   const results = await Promise.all(
-    repos.map(async (repo) => {
-      const config = await loadConfig(gh, repo);
-      return config ? summarize(gh, repo, config, login).catch(() => null) : null;
-    }),
+    repos.map((repo) => swr(`project:${repo}:${login}`, FRESH_MS, () => getProjectFresh(repo, login), waitMs).catch(() => null)),
   );
   return results.filter((p): p is ProjectSummary => p !== null);
 }
 
-export async function getProject(repo: string, login: string | null = null): Promise<ProjectSummary | null> {
+/** For page renders: answers at once from the last read, refreshing in the background (src/lib/github/swr.ts). */
+export async function getProject(repo: string, login: string | null = null, waitMs = 0): Promise<ProjectSummary | null> {
+  if (!getOctokit() || !configuredRepos().includes(repo)) return getProjectFresh(repo, login);
+  return swr(`project:${repo}:${login}`, FRESH_MS, () => getProjectFresh(repo, login), waitMs);
+}
+
+/** Straight from GitHub. Permission checks use this, never the cached read. */
+export async function getProjectFresh(repo: string, login: string | null = null): Promise<ProjectSummary | null> {
   const gh = getOctokit();
   if (!gh) return sampleProjects.find((p) => p.repo === repo) ?? null;
   if (!configuredRepos().includes(repo)) return null;
@@ -80,6 +90,11 @@ export async function getProject(repo: string, login: string | null = null): Pro
 
 /** Newest first: dashboard records (approvals, requests, pins…) merged with workflow runs. */
 export async function getActivity(repo: string, limit = 50): Promise<ActivityEvent[]> {
+  if (getOctokit() && configuredRepos().includes(repo)) return swr(`activity:${repo}:${limit}`, FRESH_MS, () => getActivityFresh(repo, limit));
+  return getActivityFresh(repo, limit);
+}
+
+async function getActivityFresh(repo: string, limit: number): Promise<ActivityEvent[]> {
   const gh = getOctokit();
   if (!gh) {
     const extra = await storeFor(null).list(repo, limit);
@@ -155,8 +170,16 @@ const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
  * `actor` is the signed-in login, or "claude:<login>" for a Claude session.
  */
 export async function performAction(actor: string, input: ActionInput): Promise<ActionResult> {
+  try {
+    return await performActionFresh(actor, input);
+  } finally {
+    invalidate(input.repo); // the next page read shows the result of the press
+  }
+}
+
+async function performActionFresh(actor: string, input: ActionInput): Promise<ActionResult> {
   const gh = getOctokit();
-  const project = await getProject(input.repo);
+  const project = await getProjectFresh(input.repo);
   if (!project) return { ok: false, status: 404, error: "unknown project" };
   const { config, stages } = project;
   const idx = config.stages.findIndex((s) => s.id === input.stageId);
@@ -280,7 +303,7 @@ export async function openRequests(repo: string): Promise<PushRequest[]> {
  * starting "claude:" can never answer.
  */
 export async function answerRequest(actor: string, repo: string, requestId: string, ok: boolean): Promise<ActionResult> {
-  const project = await getProject(repo);
+  const project = await getProjectFresh(repo);
   if (!project) return { ok: false, status: 404, error: "unknown project" };
   const req = (await openRequests(repo)).find((r) => r.id === requestId);
   if (!req) return { ok: false, status: 404, error: "that request is already answered or gone" };
@@ -303,8 +326,9 @@ export async function answerRequest(actor: string, repo: string, requestId: stri
 }
 
 /** The valid approval for putting what is on the stage before onto the last stage, if any. */
-export async function currentApproval(repo: string): Promise<Approval | null> {
-  const project = await getProject(repo);
+export async function currentApproval(repo: string, opts: { cached?: boolean; waitMs?: number } = {}): Promise<Approval | null> {
+  if (opts.cached) return swr(`approval:${repo}`, FRESH_MS, () => currentApproval(repo), opts.waitMs);
+  const project = await getProjectFresh(repo);
   if (!project || project.stages.length < 2) return null;
   const last = project.stages[project.stages.length - 1];
   const prev = project.stages[project.stages.length - 2];

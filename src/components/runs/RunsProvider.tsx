@@ -18,7 +18,7 @@ export function useRuns() {
   return useContext(Ctx);
 }
 
-export function RunsProvider({ children }: { children: ReactNode }) {
+export function RunsProvider({ children, idleMs = 60_000 }: { children: ReactNode; idleMs?: number }) {
   const [runs, setRuns] = useState<ActiveRun[]>([]);
 
   const refresh = useCallback(async () => {
@@ -37,9 +37,12 @@ export function RunsProvider({ children }: { children: ReactNode }) {
   }, [anyRunning]);
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, anyRunning ? 1000 : 5000);
+    // Follow a run closely while one is going; otherwise check rarely, and never in a hidden tab.
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, anyRunning ? 2000 : idleMs);
     return () => clearInterval(t);
-  }, [refresh, anyRunning]);
+  }, [refresh, anyRunning, idleMs]);
 
   const start = useCallback(
     async (repo: string, stageId: string, kind: RunKind) => {

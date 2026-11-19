@@ -40,3 +40,8 @@ export async function runChecksAction(repoSlug: string, stageId: string, when: "
 export async function answerRequestAction(repo: string, requestId: string, ok: boolean) {
   return data.answerRequest(repo, requestId, ok);
 }
+
+/** Background poll and the Refresh button: re-read GitHub, then the page re-renders from fresh data. */
+export async function refreshNowAction() {
+  await data.refreshFromGithub();
+}
