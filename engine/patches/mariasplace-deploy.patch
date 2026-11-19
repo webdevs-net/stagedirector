@@ -1,0 +1,201 @@
+--- a/scripts/deploy.sh
++++ b/scripts/deploy.sh
+@@ -5,7 +5,8 @@
+ #   scripts/deploy.sh staging [--dry-run] [--diff]   deploy the current commit to staging
+ #   scripts/deploy.sh approve                         sign off: "I reviewed this commit on staging"
+ #   scripts/deploy.sh live [--dry-run] [--diff]       deploy the approved commit to LIVE
+-#   scripts/deploy.sh status                          what is on staging, what is approved, what is live
++#   scripts/deploy.sh status [--json]                 what is on staging, what is approved, what is live
++#   scripts/deploy.sh drift <staging|live>            list deployed files that differ on the server from git
+ #   scripts/deploy.sh rollback <staging|live> <ts>    restore the files a previous deploy replaced
+ #
+ # The rules (why this exists: unfinished changes reached live and took the site down):
+@@ -20,6 +21,12 @@
+ #       4. a person types the confirmation at a real terminal.
+ #     `approve` and `live` refuse to run without a terminal, so scripts, CI and AI
+ #     sessions cannot approve or push live on their own.
++#     One exception, for Stage Director (engine/contract.md in the stagedirector repo):
++#     inside GitHub Actions, `live` and `rollback live` run without a terminal only when
++#     STAGEDIRECTOR_APPROVAL names an approval file the Stage Director workflow wrote after
++#     checking that a code owner (never an AI session or bot) approved this exact commit.
++#     Rules 1-3 above still apply, and a live deploy that would overwrite server edits
++#     still refuses without a terminal.
+ #   * Every deploy backs up the files it replaces, runs `php -l` on the server first,
+ #     verifies by smoke-testing pages, and never deletes files on the server.
+ #   * Before overwriting a live file that has content not in the commit (edited on the
+@@ -27,6 +34,8 @@
+ #
+ # Settings and page content (Divi, menus, wp options) are NOT deployed by this script.
+ # Override via env: DEPLOY_HOST.
++# Exit codes (Stage Director contract): 0 done, 1 failed after changing the server (a
++# STAGEDIRECTOR_BACKUP=<id> line was printed if a backup exists), 2 refused, nothing changed.
+ 
+ set -euo pipefail
+ 
+@@ -45,11 +54,41 @@
+ 
+ cd "$(git rev-parse --show-toplevel)"
+ 
+-die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
++die()  { printf 'ERROR: %s\n' "$*" >&2; exit 2; }   # 2 = refused before changing anything
+ info() { printf '%s\n' "$*"; }
+ remote() { ssh -n -o BatchMode=yes "$HOST" "$@"; }
++NONINTERACTIVE=0; APPROVED_BY=""
+ need_tty() { { [ -t 0 ] && [ -t 1 ]; } || die "$1 needs a person at a terminal (no piped input, scripts or AI sessions)."; }
+-ask() { local a; read -r -p "$1" a; [ "$a" = "$2" ]; }
++# approval_ok deploy|rollback: true when STAGEDIRECTOR_APPROVAL is a valid Stage Director approval for LIVE.
++approval_ok() {
++  local f="${STAGEDIRECTOR_APPROVAL:-}"
++  { [ -n "$f" ] && [ -f "$f" ]; } || return 1
++  [ "${GITHUB_ACTIONS:-}" = true ] || die "STAGEDIRECTOR_APPROVAL is only accepted inside the Stage Director GitHub workflow."
++  command -v jq >/dev/null || die "jq is needed to read STAGEDIRECTOR_APPROVAL"
++  jq -e --arg sha "${SHA:-}" --arg act "$1" --arg now "$(date -u +%FT%TZ)" '
++      .version == 1 and .stageId == "live"
++      and (.action == $act or ($act == "rollback" and .action == "deploy"))   # Safety net undoes the approved deploy
++      and ($act == "rollback" or .commit == $sha)
++      and (.by | type == "string" and length > 0 and (ascii_downcase | startswith("claude:") | not) and (endswith("[bot]") | not))
++      and ((.requestedBy // "") | ascii_downcase | startswith("claude:") | not)
++      and (.expiresAt | type == "string") and .expiresAt > $now' "$f" >/dev/null \
++    || die "STAGEDIRECTOR_APPROVAL is not a valid, unexpired code-owner approval for $1 ${SHORT:+of $SHORT }on LIVE."
++  APPROVED_BY="$(jq -r .by "$f")"
++}
++# person_or_approval what action: a person at a terminal, or (CI) a valid Stage Director approval.
++person_or_approval() {
++  if [ -t 0 ] && [ -t 1 ]; then return 0; fi
++  if approval_ok "$2"; then NONINTERACTIVE=1; info "No terminal: using Stage Director approval by $APPROVED_BY."; return 0; fi
++  need_tty "$1"
++}
++ask() {
++  local a
++  if [ "$NONINTERACTIVE" -eq 1 ]; then
++    [ "$2" != overwrite ] || die "LIVE has server edits that are not in git (see above). Stage Director will not overwrite them; run scripts/deploy.sh live at a terminal, or put those edits in git first."
++    info "${1%%:*}: confirmed by Stage Director (approved by ${APPROVED_BY:-the workflow})."; return 0
++  fi
++  read -r -p "$1" a; [ "$a" = "$2" ]
++}
+ usage() { sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+ 
+ CMD="${1:-}"; [ -n "$CMD" ] || usage; shift || true
+@@ -75,7 +114,34 @@
+   fi
+ }
+ 
++# current_on staging|live -> "sha|deployedAt|deployedBy" of what is on that stage now (empty if unknown).
++# Reads ~/$STATE/<stage>.log ("<when> <sha> by <who> backup <ts>" and "<when> ROLLBACK <ts>"); for
++# staging, falls back to the newest staged/ marker when staging.log does not exist yet.
++current_on() {
++  remote "f=~/$STATE/$1.log; if [ -f \$f ]; then cat \$f; elif [ $1 = staging ] && [ -d ~/$STATE/staged ]; then
++      s=\$(ls -t ~/$STATE/staged | head -1); [ -z \"\$s\" ] || echo \"\$(cut -d' ' -f2 ~/$STATE/staged/\$s) \$s by unknown backup none\"; fi" \
++  | awk '$2 == "ROLLBACK" { for (i = n; i > 0; i--) if (bk[i] == $3) { n = i - 1; break } ; next }
++         $2 ~ /^[0-9a-f]{40}$/ { n++; sha[n] = $2; at[n] = $1; by[n] = "unknown"; bk[n] = ""
++           for (i = 3; i < NF; i++) { if ($i == "by") by[n] = $(i+1); if ($i == "backup") bk[n] = $(i+1) } }
++         END { if (n > 0) printf "%s|%s|%s\n", sha[n], at[n], by[n] }'
++}
++
+ # ---- status -----------------------------------------------------------------
++if [ "$CMD" = "status" ] && [ "${1:-}" = "--json" ]; then
++  command -v jq >/dev/null || die "status --json needs jq"
++  IFS='|' read -r S_SHA S_AT S_BY <<<"$(current_on staging)" || true
++  IFS='|' read -r L_SHA L_AT L_BY <<<"$(current_on live)" || true
++  BEHIND=0
++  if [ -n "${S_SHA:-}" ] && [ -n "${L_SHA:-}" ] && git cat-file -e "$S_SHA^{commit}" 2>/dev/null && git cat-file -e "$L_SHA^{commit}" 2>/dev/null; then
++    BEHIND="$(git rev-list --count "$L_SHA..$S_SHA")"
++  fi
++  jq -n --arg ss "${S_SHA:-}" --arg sa "${S_AT:-}" --arg sb "${S_BY:-}" \
++        --arg ls "${L_SHA:-}" --arg la "${L_AT:-}" --arg lb "${L_BY:-}" --argjson behind "$BEHIND" '
++    def n: if . == "" or . == "unknown" then null else . end;
++    [ {stageId: "staging", commit: ($ss|n), deployedAt: ($sa|n), deployedBy: ($sb|n), behindBy: 0, outOfSync: [], pinned: false},
++      {stageId: "live", commit: ($ls|n), deployedAt: ($la|n), deployedBy: ($lb|n), behindBy: $behind, outOfSync: [], pinned: false} ]'
++  exit 0
++fi
+ if [ "$CMD" = "status" ]; then
+   remote "mkdir -p ~/$STATE/staged ~/$STATE/approved
+     echo 'On staging (latest first):'; ls -t ~/$STATE/staged | head -5 | sed 's/^/  /'
+@@ -88,7 +154,12 @@
+ if [ "$CMD" = "rollback" ]; then
+   target_env "${1:-}"; TS="${2:-}"
+   [ -n "$TS" ] || die "usage: scripts/deploy.sh rollback <staging|live> <timestamp>"
+-  [ "$NAME" = "LIVE" ] && need_tty "Rolling back LIVE"
++  if [ "$NAME" = "LIVE" ]; then
++    person_or_approval "Rolling back LIVE" rollback
++  elif ! { [ -t 0 ] && [ -t 1 ]; }; then
++    { [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "${STAGEDIRECTOR:-}" ]; } || need_tty "Rolling back staging"
++    NONINTERACTIVE=1
++  fi
+   BK="backups/mariasplace-${1}-deploy-$TS"
+   remote "test -f ~/$BK/manifest.txt" || die "no backup ~/$BK on the server"
+   check_site
+@@ -98,11 +169,34 @@
+     grep '^M ' ../manifest.txt | cut -c3- | while IFS= read -r f; do mkdir -p ~/$ROOT/\$(dirname \"\$f\"); cp -p \"\$f\" ~/$ROOT/\"\$f\"; done
+     grep '^A ' ../manifest.txt | cut -c3- | while IFS= read -r f; do rm -f ~/$ROOT/\"\$f\"; done
+     cd ~/$ROOT && wp cache flush >/dev/null 2>&1 || true"
+-  if [ "$NAME" = "LIVE" ]; then remote "echo \"\$(date -u +%FT%TZ) ROLLBACK $TS\" >> ~/$STATE/live.log"; fi
++  remote "echo \"\$(date -u +%FT%TZ) ROLLBACK $TS\" >> ~/$STATE/$1.log"
+   info "Rolled back $NAME. Re-check the site."
+   exit 0
+ fi
+ 
++# ---- drift --------------------------------------------------------------------
++if [ "$CMD" = "drift" ]; then
++  target_env "${1:-live}"
++  IFS='|' read -r D_SHA _ _ <<<"$(current_on "${1:-live}")" || true
++  [ -n "${D_SHA:-}" ] || die "no record of what is on $NAME; nothing to compare"
++  git cat-file -e "$D_SHA^{commit}" 2>/dev/null || git fetch -q origin "$D_SHA" 2>/dev/null || die "commit $D_SHA (on $NAME) is not in this clone"
++  check_site
++  REL="$(mktemp -d)"; trap 'rm -rf "$REL"' EXIT
++  git archive "$D_SHA" -- "${TARGETS[@]}" "${ROOT_FILES[@]}" 2>/dev/null | tar -x -C "$REL"
++  if [ "$NAME" = "STAGING" ]; then
++    { grep -rlI --include='*.php' --include='*.css' --include='*.js' --include='*.txt' -e 'https://mariasplace.com' "$REL" 2>/dev/null || true; } \
++      | while IFS= read -r f; do sed -i.bak -e "s#https://mariasplace\\.com#${STAGING_URL}#g" "$f" && rm -f "$f.bak"; done
++  fi
++  # One path per line: files git deployed that are now different or missing on the server.
++  for t in "${TARGETS[@]}" "${ROOT_FILES[@]}"; do
++    [ -e "$REL/$t" ] || continue
++    if [ -d "$REL/$t" ]; then src="$REL/$t/"; dst="$HOST:$ROOT/$t/"; pre="$t/"; else src="$REL/$t"; dst="$HOST:$ROOT/$t"; pre=""; fi
++    rsync -rlcn "${EXCLUDES[@]}" --out-format='%i %n' -e "ssh -o BatchMode=yes" "$src" "$dst" \
++      | while IFS= read -r line; do case "${line%% *}" in [\<\>]f*) p="${line#* }"; [ -n "$pre" ] || p="$t"; printf '%s%s\n' "$pre" "$p" ;; esac; done
++  done
++  exit 0
++fi
++
+ SHA="$(git rev-parse HEAD)"; SHORT="$(git rev-parse --short HEAD)"; BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+ 
+ # ---- approve ----------------------------------------------------------------
+@@ -132,10 +226,13 @@
+ fi
+ 
+ if [ "$NAME" = "LIVE" ]; then
+-  [ "$DRY_RUN" -eq 1 ] || need_tty "Deploying to LIVE"
++  [ "$DRY_RUN" -eq 1 ] || person_or_approval "Deploying to LIVE" deploy
+   git fetch -q origin main
+   [ "$SHA" = "$(git rev-parse origin/main)" ] || die "LIVE only takes origin/main. You are on $BRANCH @ $SHORT; origin/main is $(git rev-parse --short origin/main). Merge the pull request, then check out main and pull."
+   remote "test -f ~/$STATE/staged/$SHA"   || die "commit $SHORT was never deployed to staging. Run: scripts/deploy.sh staging   then review it."
++  if [ "$NONINTERACTIVE" -eq 1 ]; then # record the Stage Director approval where `approve` would
++    remote "mkdir -p ~/$STATE/approved && echo \"approved \$(date -u +%FT%TZ) by $APPROVED_BY via Stage Director ${STAGEDIRECTOR_RUN_URL:-}\" > ~/$STATE/approved/$SHA"
++  fi
+   remote "test -f ~/$STATE/approved/$SHA" || die "commit $SHORT is on staging but not approved. Review it on staging, then run: scripts/deploy.sh approve"
+ fi
+ 
+@@ -222,12 +319,13 @@
+   find . -type f | sed 's|^\./||' | while IFS= read -r f; do mkdir -p ~/$ROOT/\$(dirname \"\$f\"); cp \"\$f\" ~/$ROOT/\"\$f\"; done
+   cd ~/$ROOT && wp cache flush >/dev/null 2>&1 || true"
+ info "Deployed to $NAME. Backup: ~/$BK   (undo: scripts/deploy.sh rollback $CMD $TS)"
++echo "STAGEDIRECTOR_BACKUP=$TS"
++WHO="${STAGEDIRECTOR_REQUESTED_BY:-$(whoami)@$(hostname -s)}"
+ 
+ if [ "$NAME" = "STAGING" ]; then
+   remote "mkdir -p ~/$STATE/staged && echo \"staged \$(date -u +%FT%TZ) branch $BRANCH backup $TS\" > ~/$STATE/staged/$SHA"
+-else
+-  remote "echo \"\$(date -u +%FT%TZ) $SHA by $(whoami)@$(hostname -s) backup $TS\" >> ~/$STATE/live.log"
+ fi
++remote "mkdir -p ~/$STATE && echo \"\$(date -u +%FT%TZ) $SHA by $WHO backup $TS\" >> ~/$STATE/$CMD.log"
+ 
+ BAD=0
+ for p in "${SMOKE_PATHS[@]}"; do
+@@ -240,5 +338,5 @@
+   exit 1
+ fi
+ info "Smoke test OK."
+-if [ "$NAME" = "STAGING" ]; then info "Next: review $STAGING_URL, then run  scripts/deploy.sh approve"; fi
++if [ "$NAME" = "STAGING" ] && [ -z "${STAGEDIRECTOR:-}" ]; then info "Next: review $STAGING_URL, then run  scripts/deploy.sh approve"; fi
+ exit 0

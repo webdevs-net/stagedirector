@@ -1,0 +1,199 @@
+# Deploy-command contract
+
+Every project that Stage Director drives implements the commands named in its
+`stagedirector.yml` (`deploy`, `rollback`, `status`, `tools.*`). The workflow in
+`engine/workflow/stagedirector.yml` runs them on the self-hosted runner, from a clean
+checkout of the commit being moved, with the host SSH key loaded in `ssh-agent`.
+
+The dashboard never runs these commands and never talks to a host. It starts a
+`workflow_dispatch` run and reads results from the GitHub API.
+
+## Environment the commands get
+
+| Variable | Meaning |
+|---|---|
+| `STAGEDIRECTOR=1` | running under Stage Director |
+| `GITHUB_ACTIONS=true` | set by Actions |
+| `STAGEDIRECTOR_STAGE` | stage id, e.g. `live` |
+| `STAGEDIRECTOR_COMMIT` | full SHA; equals `git rev-parse HEAD` |
+| `STAGEDIRECTOR_ACTOR` | GitHub login that started the run |
+| `STAGEDIRECTOR_REQUESTED_BY` | who asked, as sent by the dashboard (`auto` for pushes) |
+| `STAGEDIRECTOR_RUN_URL` | link to the run, for logs and records |
+| `STAGEDIRECTOR_APPROVAL` | path to the approval file; only for `deploy`/`rollback` into a `pushers: code-owners` stage |
+| `SSH_AUTH_SOCK` | agent holding the host key from the environment secret |
+
+There is no terminal (stdin is not a TTY). A command must never wait for input.
+
+Placeholders in `stagedirector.yml` commands: `{backup}`, `{commit}`, `{stage}`.
+
+## Exit codes
+
+| Code | Meaning | Workflow does |
+|---|---|---|
+| `0` | done | runs the stage's smoke test, then `tools.clearCache` |
+| `2` | refused before touching the host (a rule failed, bad input, unreachable host) | marks the deployment `failure`; no rollback |
+| anything else | failed, the host may be changed | Safety net: runs `rollback` with the backup id if one was printed, marks the deployment `failure` (rolled back) or `error` (could not roll back) |
+
+## Backup id
+
+`deploy` prints one line, exactly:
+
+```
+STAGEDIRECTOR_BACKUP=<id>
+```
+
+as soon as the backup exists, before anything that can fail afterwards (swap,
+smoke test). `<id>` matches `[A-Za-z0-9._:-]+`. The workflow stores it in the
+GitHub Deployment status (`backup=<id>`) and passes it to `rollback` as `{backup}`.
+A deploy that changed nothing may omit it.
+
+`rollback <stage> <id>` restores the host to how it was before that deploy, runs
+without input, and exits `0` only when it did.
+
+## Smoke test
+
+After exit `0` the workflow fetches `url` + each `smokeTest` path. 2xx passes. 401
+passes only on stages that are not the last (password-protected staging); set the
+environment secret `STAGEDIRECTOR_BASIC_AUTH` (`user:password`) to test behind the
+password instead. Anything else fails and triggers the Safety net. A project's own
+script may also smoke-test (and exit `1`), which is fine.
+
+## `status --json`
+
+Prints a JSON array of `StageStatus` (see `src/lib/types.ts`), one per deployable
+stage, and nothing else on stdout:
+
+```json
+[
+  {"stageId": "staging", "commit": "9f2c…", "deployedAt": "2026-11-18T10:02:00Z",
+   "deployedBy": "ryan", "behindBy": 0, "outOfSync": [], "pinned": false},
+  {"stageId": "live", "commit": "41ab…", "deployedAt": "2026-11-10T09:00:00Z",
+   "deployedBy": "ryan", "behindBy": 3, "outOfSync": [], "pinned": false}
+]
+```
+
+- `commit` is what the **host** says is there (after rollbacks), `null` if unknown.
+- `behindBy` = commits on the previous stage that this stage lacks (0 if unknown).
+- `outOfSync` may be `[]`; the full list comes from `tools.syncCheck`.
+- `pinned` is always `false` here. Pins live in GitHub (below); the data layer overrides it.
+
+The data layer may treat GitHub Deployments as the main source and use
+`status --json` to spot hosts changed outside Stage Director.
+
+## `tools.syncCheck` (drift)
+
+Prints one changed path per line (files git put on the host that now differ or are
+missing there). Empty output = in sync. Exit `0` either way; `2` if it cannot tell.
+
+## `tools.clearCache`
+
+Clears the stage's caches (`STAGEDIRECTOR_STAGE`). Idempotent. Failure is reported
+but does not fail a deploy.
+
+## Approval file (non-interactive live)
+
+For `deploy` and `rollback` into a `pushers: code-owners` stage the workflow writes
+a JSON file (mode 600, deleted at the end of the job) and sets
+`STAGEDIRECTOR_APPROVAL` to its path:
+
+```json
+{
+  "version": 1,
+  "repo": "owner/name",
+  "stageId": "live",
+  "commit": "<full sha>",
+  "action": "deploy",
+  "by": "<code owner who approved; for rollback, the code owner who pressed Undo>",
+  "at": "<ISO time of the approval>",
+  "actor": "<github.actor>",
+  "requestedBy": "<requested_by input>",
+  "runUrl": "https://github.com/…/actions/runs/…",
+  "expiresAt": "<now + 45 min, ISO UTC>"
+}
+```
+
+A deploy script that normally insists on a terminal for live may skip the prompt
+**only** when all hold, and must refuse otherwise:
+
+- `GITHUB_ACTIONS=true` and the file exists;
+- `version == 1`, `stageId` is its live stage, `action` matches what it is doing
+  (a `deploy` approval also allows `rollback`, so the Safety net can undo that deploy);
+- for `deploy`, `commit` equals `git rev-parse HEAD`;
+- `by` is non-empty, does not start with `claude:`, does not end in `[bot]`;
+- `requestedBy` does not start with `claude:`;
+- `expiresAt` is in the future.
+
+The file is a hand-over, not the lock: anyone with a shell on the runner could write
+one. The real locks are the workflow's checks plus the GitHub Environment holding
+the host key (next section). Keep every safety check the script already has
+(branch rule, staged-first, lint, backups). Anything that normally asks a person to
+confirm something unusual (e.g. overwriting edits made on the server) should refuse
+(exit `2`) without a terminal.
+
+## Live gate (what the workflow checks)
+
+In order; the first failure stops the run with a plain-English reason in the run
+summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
+**default branch**, never from the commit being moved.
+
+1. **Dispatch from the default branch.** A run started on another ref is refused.
+2. **Inputs valid.** Stage id in config, 40-char SHA present in the repo, action one of
+   `deploy|rollback|pin|unpin|clear-cache`.
+3. **Who.**
+   - `pushers: none` → always refused.
+   - `developers` → `github.actor` has write/maintain/admin.
+   - `code-owners` → only `workflow_dispatch` (never on push); `github.actor` **and**
+     `github.triggering_actor` are listed on the `*` line of CODEOWNERS (teams
+     expanded), are not bots; `requested_by` does not start with `claude:`.
+     So the dashboard must start live runs with the **person's own** GitHub token.
+4. **Pinned.** `refs/stagedirector/pins/<stage>` exists → deploy/rollback refused.
+   `pin` creates/moves that ref to the commit; `unpin` deletes it. Same "who" rules.
+5. **Approval of this exact commit** (deploy into code-owners stage). The newest commit
+   status with context `stagedirector/approval/<stage>` on the commit must be
+   `success`, its `creator` (recorded by GitHub, cannot be faked by the caller) must be a
+   code owner and a person, and its description must not start with `claude:`. A later
+   status with another state (e.g. `error`, "approval withdrawn") cancels it.
+   The dashboard records an approval by calling
+   `POST /repos/{o}/{r}/statuses/{sha}` **with the code owner's own token**:
+   `{"state":"success","context":"stagedirector/approval/live","description":"Approved by <login>"}`.
+   The workflow token cannot pass: its creator is `github-actions[bot]`.
+6. **Strict order** (deploy). The nearest earlier stage with a `deploy` command must be
+   on this commit: its newest GitHub Deployment whose newest status is `success` has
+   `sha == commit`.
+7. **Environment lock.** The run job uses GitHub Environment `stagedirector-<stage>`.
+   The host SSH key is a secret of that environment only. Configure:
+   - Deployment branches: **default branch only** (so an edited copy of this workflow
+     on a branch never gets the key).
+   - For live: **Required reviewers** = the code owners, and *Prevent self-review* off
+     if the approver is also the one pressing the button. The dashboard can submit
+     that review for the person (`POST …/actions/runs/{id}/pending_deployments` with
+     their token), so it stays one press.
+   Required reviewers need a public repo or a paid plan (Team/Enterprise) for private
+   repos. Without it, step 5 is still enforced and the branch policy still applies
+   where available.
+8. Branch protection on the default branch, with CODEOWNERS review required for
+   `CODEOWNERS`, `stagedirector.yml` and `.github/workflows/`, is what makes 1–7 hold.
+   Set it up.
+
+## Records the dashboard reads
+
+- **GitHub Deployments** (`environment` = stage id): one per deploy, `ref` = commit,
+  `payload` = `{requestedBy, approvedBy, runUrl}`. Statuses: `in_progress` →
+  `success` (description has `backup=<id>`) | `failure` (refused, or failed and rolled
+  back) | `error` (failed and NOT rolled back: check the site) | `inactive` (undone by a
+  later rollback). `auto_inactive` is off, so **"what is on a stage" = the newest
+  deployment whose newest status is `success`.**
+- **Commit statuses** `stagedirector/approval/<stage>`: approvals.
+- **Refs** `refs/stagedirector/pins/<stage>`: pins.
+- **Workflow runs** (name "Stage Director"): busy state, logs, history. A run's
+  summary says who, what and why it was refused.
+- GitHub keeps only one *pending* run per concurrency group (per repo). A third press
+  while one runs and one waits replaces the waiting one; the UI should show "busy".
+
+## Limits in this version
+
+- A push deploys only the **first** `trigger: auto` stage.
+- Live takes what Maria's Place's script allows (only `origin/main` tip). If `main`
+  moves after approval, approve the new tip.
+- Custom refs for pins: if GitHub refuses `refs/stagedirector/...` for a repo, switch
+  to tags `stagedirector-pin-<stage>` (two lines in the workflow).
