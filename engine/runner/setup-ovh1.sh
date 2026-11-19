@@ -25,7 +25,7 @@ set -euo pipefail
 
 RUNNER_USER="stagedirector-runner"
 RUNNER_HOME="/srv/stagedirector"
-RUNNER_VERSION="2.321.0"
+RUNNER_VERSION="2.338.2"
 # Set RUNNER_VERSION to the current release and paste its sha256 for actions-runner-linux-x64-<version>.tar.gz
 # from https://github.com/actions/runner/releases (the release notes list it). Left blank on purpose.
 RUNNER_SHA256="${RUNNER_SHA256:-}"

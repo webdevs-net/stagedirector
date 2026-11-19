@@ -66,6 +66,16 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 | Stop | `docker compose down` (keeps registration) |
 | Remove completely | in GitHub remove the runner, then `docker compose -p <COMPOSE_PROJECT_NAME> down -v` (always name the project) |
 
+## Troubleshooting (seen in real setups)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `config.sh` fails with `404 (Not Found)` at `GetTenantCredential`, even with a fresh token | GitHub refuses runners that are too old | Set `RUNNER_VERSION` to a current release ([releases](https://github.com/actions/runner/releases)), then `docker compose up -d --build` |
+| Build hangs at the first `apt-get update` (ovh1) | `archive.ubuntu.com` / `security.ubuntu.com` time out from OVH | `APT_MIRROR=http://ubuntu.mirrors.ovh.net/ubuntu/` in `.env`, rebuild |
+| `all predefined address pools have been fully subnetted` | The host's Docker has no free network ranges (many projects) | Don't delete other projects' networks. Add `docker-compose.override.yml` with `services: {runner: {network_mode: bridge}}` so the runner uses Docker's default bridge |
+| A job on a runner reaches its own host over SSH but gets `Connection refused` / timeout (ovh1) | `ufw` allows SSH only on `tailscale0` | Allow the runner's Docker bridge to the host's tailnet address on port 22 (one `ufw allow from <bridge subnet> to <tailnet ip> port 22` rule) |
+| A forced-command key (`kits/ssh-compose`) is ignored and you get a shell or "permission denied" | **Tailscale SSH** answers tailnet peers itself and ignores `authorized_keys` (forced commands included) | Reach `sshd` from a non-tailnet source, or turn Tailscale SSH off for that host. Never rely on the forced command when Tailscale SSH is on |
+
 ## Per project
 
 | Project | How it deploys | Bundle needed? |
