@@ -28,9 +28,12 @@ services:
       RUNNER_NAME: ${RUNNER_NAME:?set RUNNER_NAME in .env}
       RUNNER_LABELS: ${RUNNER_LABELS:-self-hosted}
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      # Run progress for a dashboard on the same machine (see engine/contract.md "Run progress file").
+      STAGEDIRECTOR_PROGRESS_DIR: /home/runner/progress
     volumes:
       - state:/home/runner/state
       - work:/home/runner/_work
+      - ${STAGEDIRECTOR_PROGRESS_HOST_DIR:-./progress}:/home/runner/progress
       - ${SSH_CONFIG_DIR:-./ssh}:/home/runner/ssh-config:ro
     security_opt:
       - no-new-privileges:true

@@ -3,7 +3,8 @@
 // them it serves the built-in demo data from ./mock so the app still runs.
 import "server-only";
 import { revalidateAll, swr } from "./github/swr";
-import { rateLimit, rateLimited } from "./github/client";
+import { asCaller } from "./github/gateway";
+import { gateway, githubIdentity, rateLimit, rateLimited } from "./github/client";
 import { headers } from "next/headers";
 
 /**
@@ -116,7 +117,12 @@ export function pollSeconds(): number {
 
 /** Timed poll / Refresh button: fetch fresh GitHub data into the cache before the page re-renders. */
 export async function refreshFromGithub(): Promise<void> {
-  if (live()) await revalidateAll();
+  if (live()) await asCaller("poll", () => revalidateAll());
+}
+
+/** For /usage: our GitHub calls in the last hour and the remaining hourly budget. */
+export function apiUsage() {
+  return { identity: githubIdentity(), ...gateway.summary() };
 }
 
 export function isDemo(): boolean {
@@ -139,7 +145,7 @@ export async function getRunLog(repoSlug?: string, stageId?: string): Promise<{ 
 // real workflow run (polled through src/lib/github/runs.ts). Without
 // credentials they use the 20-second demo run from ./mock.
 export async function getActiveRuns(): Promise<mock.ActiveRun[]> {
-  return live() ? runs.activeRuns() : mock.getActiveRuns();
+  return live() ? asCaller("runs", () => runs.activeRuns()) : mock.getActiveRuns();
 }
 
 /** Stops a run. Returns an error message, or null when it was stopped. */

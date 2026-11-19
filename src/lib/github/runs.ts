@@ -4,6 +4,7 @@ import type { ActiveRun, RunKind } from "@/lib/mock";
 import type { ProjectConfig } from "@/lib/types";
 import { configuredRepos, getOctokit, splitRepo } from "./client";
 import { mapProgress, type GhJob } from "./progress";
+import { localRuns } from "./runprogress";
 import { readConfig, recentRuns, resolveRunStage, runLog, type RunInfo } from "./repo";
 
 // Live run progress from GitHub Actions. The browser polls every second while
@@ -89,6 +90,26 @@ async function runsFor(gh: Octokit, repo: string): Promise<ActiveRun[]> {
   if (hit && Date.now() - hit.at < RUN_TTL) return hit.runs;
   const config = await configOf(gh, repo);
   if (!config) return [];
+  // A runner on this machine writes progress to a local file: while a run is going,
+  // follow it from there with no API calls. GitHub is asked again once it ends.
+  const local = localRuns(repo);
+  if (local?.some((r) => r.state === "running" && Date.now() - Date.parse(r.updatedAt ?? r.startedAt) < 30 * 60_000)) {
+    const out: ActiveRun[] = [];
+    for (const r of local) {
+      const running = r.state === "running";
+      const finishedAt = running ? null : Date.parse(r.updatedAt ?? r.startedAt);
+      if (!running && Date.now() - (finishedAt ?? 0) > KEEP_FINISHED) continue;
+      const a = toActiveRun(r, config, repo, null, finishedAt);
+      if (!a) continue;
+      if (running) {
+        a.step = Math.min(r.step, a.steps.length - 1);
+        a.progress = Math.round(((a.step + 0.5) / a.steps.length) * 100);
+      }
+      out.push(a);
+    }
+    runCache.set(repo, { at: Date.now(), runs: out });
+    return out;
+  }
   const recent = await recentRuns(gh, repo, 5).catch(() => [] as RunInfo[]);
   const out: ActiveRun[] = [];
   for (const r of recent) {

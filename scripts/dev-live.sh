@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the dashboard locally against real GitHub data.
-# The token is read from your GitHub CLI login at start-up and handed to the
+# If .env.local sets a GitHub App or STAGEDIRECTOR_GITHUB_TOKEN, the dashboard uses that
+# (its own hourly limit). Otherwise the token is read from your GitHub CLI login at start-up and handed to the
 # app in memory only. It is never written to a file or printed.
 set -euo pipefail
 cd "$(dirname "$0")/.."

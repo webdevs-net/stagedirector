@@ -226,3 +226,14 @@ capabilities, and memory/CPU caps (`DASHBOARD_MEMORY`, `DASHBOARD_CPUS`).
   Read-only: it never commits or pushes.
 - **Outside deploys** (e.g. `scripts/deploy.sh staging` from a terminal): see
   `engine/contract.md` "Outside deploys". Display only; the live gate is unchanged.
+
+## GitHub budget (gateway)
+
+Every GitHub REST call goes through `src/lib/github/gateway.ts`: counted per endpoint and
+caller, one ETag cache (304s are free), identical in-flight GETs shared, background calls
+capped at `STAGEDIRECTOR_GITHUB_PER_MINUTE` (default 5) with a burst for a cold start, and
+paused when GitHub's hourly budget is under 100. Button presses are never capped. See `/usage`.
+
+Git facts come from a local copy kept with `git fetch` (not REST): `.stagedirector-cache/repos`.
+A runner on the same machine can report run progress through a local file (engine/contract.md).
+Use a GitHub App or `STAGEDIRECTOR_GITHUB_TOKEN` so the dashboard has its own hourly limit.

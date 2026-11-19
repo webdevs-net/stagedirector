@@ -314,6 +314,25 @@ jobs:
       ACTOR: ${{ github.actor }}
       TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
     steps:
+      - name: Note progress on this machine - started (optional)
+        # Self-hosted runners whose environment sets STAGEDIRECTOR_PROGRESS_DIR (a folder the
+        # dashboard on the same machine can read) append one JSON line per step. The dashboard's
+        # run window reads it instead of asking the GitHub API every few seconds. Display only.
+        env:
+          SD_STEP: "0"
+          SD_STATE: running
+          SD_STAGE: ${{ needs.gate.outputs.stage }}
+          SD_COMMIT: ${{ needs.gate.outputs.commit }}
+          SD_ACTION: ${{ needs.gate.outputs.action }}
+          SD_BY: ${{ needs.gate.outputs.requested_by }}
+        run: |
+          [ -n "${STAGEDIRECTOR_PROGRESS_DIR:-}" ] && [ -d "$STAGEDIRECTOR_PROGRESS_DIR" ] || exit 0
+          f="$STAGEDIRECTOR_PROGRESS_DIR/${GITHUB_REPOSITORY/\//~}.jsonl"
+          jq -cn --argjson run "$GITHUB_RUN_ID" --arg repo "$GITHUB_REPOSITORY" --arg stage "$SD_STAGE" --arg commit "$SD_COMMIT" \
+            --arg action "$SD_ACTION" --arg by "$SD_BY" --arg state "$SD_STATE" --argjson step "$SD_STEP" \
+            --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{run:$run, repo:$repo, stage:$stage, commit:$commit, action:$action, by:$by, state:$state, step:$step, at:$at, url:$url}' >> "$f" || true
+
       - name: Check out ${{ needs.gate.outputs.commit }}
         uses: actions/checkout@v5
         with:
@@ -365,6 +384,25 @@ jobs:
             '{version: 1, repo: $repo, stageId: $stage, commit: $commit, action: $action,
               by: $by, at: $at, actor: $actor, requestedBy: $req, runUrl: $run, expiresAt: $exp}' > "$F"
           echo "STAGEDIRECTOR_APPROVAL=$F" >> "$GITHUB_ENV"
+
+      - name: Note progress on this machine - copying (optional)
+        # Self-hosted runners whose environment sets STAGEDIRECTOR_PROGRESS_DIR (a folder the
+        # dashboard on the same machine can read) append one JSON line per step. The dashboard's
+        # run window reads it instead of asking the GitHub API every few seconds. Display only.
+        env:
+          SD_STEP: "2"
+          SD_STATE: running
+          SD_STAGE: ${{ needs.gate.outputs.stage }}
+          SD_COMMIT: ${{ needs.gate.outputs.commit }}
+          SD_ACTION: ${{ needs.gate.outputs.action }}
+          SD_BY: ${{ needs.gate.outputs.requested_by }}
+        run: |
+          [ -n "${STAGEDIRECTOR_PROGRESS_DIR:-}" ] && [ -d "$STAGEDIRECTOR_PROGRESS_DIR" ] || exit 0
+          f="$STAGEDIRECTOR_PROGRESS_DIR/${GITHUB_REPOSITORY/\//~}.jsonl"
+          jq -cn --argjson run "$GITHUB_RUN_ID" --arg repo "$GITHUB_REPOSITORY" --arg stage "$SD_STAGE" --arg commit "$SD_COMMIT" \
+            --arg action "$SD_ACTION" --arg by "$SD_BY" --arg state "$SD_STATE" --argjson step "$SD_STEP" \
+            --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{run:$run, repo:$repo, stage:$stage, commit:$commit, action:$action, by:$by, state:$state, step:$step, at:$at, url:$url}' >> "$f" || true
 
       - name: Run ${{ needs.gate.outputs.action }}
         env:
@@ -515,6 +553,26 @@ jobs:
             exit 1
             ;;
           esac
+
+      - name: Note progress on this machine - finished (optional)
+        # Self-hosted runners whose environment sets STAGEDIRECTOR_PROGRESS_DIR (a folder the
+        # dashboard on the same machine can read) append one JSON line per step. The dashboard's
+        # run window reads it instead of asking the GitHub API every few seconds. Display only.
+        if: always()
+        env:
+          SD_STEP: "3"
+          SD_STATE: ${{ job.status == 'success' && 'passed' || (job.status == 'cancelled' && 'stopped' || 'failed') }}
+          SD_STAGE: ${{ needs.gate.outputs.stage }}
+          SD_COMMIT: ${{ needs.gate.outputs.commit }}
+          SD_ACTION: ${{ needs.gate.outputs.action }}
+          SD_BY: ${{ needs.gate.outputs.requested_by }}
+        run: |
+          [ -n "${STAGEDIRECTOR_PROGRESS_DIR:-}" ] && [ -d "$STAGEDIRECTOR_PROGRESS_DIR" ] || exit 0
+          f="$STAGEDIRECTOR_PROGRESS_DIR/${GITHUB_REPOSITORY/\//~}.jsonl"
+          jq -cn --argjson run "$GITHUB_RUN_ID" --arg repo "$GITHUB_REPOSITORY" --arg stage "$SD_STAGE" --arg commit "$SD_COMMIT" \
+            --arg action "$SD_ACTION" --arg by "$SD_BY" --arg state "$SD_STATE" --argjson step "$SD_STEP" \
+            --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{run:$run, repo:$repo, stage:$stage, commit:$commit, action:$action, by:$by, state:$state, step:$step, at:$at, url:$url}' >> "$f" || true
 
       - name: Clean up
         if: always()

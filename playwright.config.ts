@@ -40,6 +40,7 @@ export default defineConfig({
         STAGEDIRECTOR_REPOS: "acme/site",
         STAGEDIRECTOR_DEV_LOGIN: "owner",
         NEXT_DIST_DIR: ".next-e2e-github",
+        STAGEDIRECTOR_GITHUB_PER_MINUTE: "100000",
         STAGEDIRECTOR_CACHE_FILE: "off", // fake data must never land in the real saved copy
       },
     },
