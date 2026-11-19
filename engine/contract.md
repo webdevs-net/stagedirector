@@ -95,6 +95,15 @@ The data layer may treat GitHub Deployments as the main source and use
 Prints one changed path per line (files git put on the host that now differ or are
 missing there). Empty output = in sync. Exit `0` either way; `2` if it cannot tell.
 
+## `tools.snapshot` (Save a backup)
+
+A full backup of one stage as it is now, started by the dashboard's **Save a backup**
+(`action: snapshot`). `{stage}` is filled in. Same who-may rules as a deploy into that stage
+(code owners for live), but no approval and allowed while pinned, because it changes nothing
+on the site. Exit `0` only when the backup is stored off the host; print one line
+`STAGEDIRECTOR_SNAPSHOT=<id>` naming it. Example (WordPress with UpdraftPlus to Backblaze):
+`scripts/deploy.sh backup {stage}` running `wp updraftplus backup --send-to-cloud`.
+
 ## `tools.clearCache`
 
 Clears the stage's caches (`STAGEDIRECTOR_STAGE`). Idempotent. Failure is reported
