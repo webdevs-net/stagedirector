@@ -8,6 +8,7 @@ import * as runs from "./github/runs";
 import type { ActivityEvent, CheckResult, ProjectSummary } from "./types";
 import { checksFor, runChecks, summarizeResults } from "./checks";
 import { applyFilter, type ActivityFilter, type ActivityRow } from "./activity";
+import { mayAnswer } from "./auth/permissions";
 
 export type { Viewer, ProjectExtras, ProjectView, RunKind, ActiveRun } from "./mock";
 export { RUN_STEPS, repoToSlug } from "./shared";
@@ -24,7 +25,17 @@ const NO_EXTRAS: mock.ProjectExtras = {
   stagingReady: false,
   files: [],
   outOfSyncNote: null,
+  requests: [],
 };
+
+async function withRequests(v: mock.ProjectView, login: string | null): Promise<mock.ProjectView> {
+  const requests = await gh.openRequests(v.repo).catch(() => []);
+  if (!requests.length) return v;
+  // "Waiting on you" when the viewer is someone who may OK at least one of them.
+  const role = login ? await gh.getRoleFor(v.repo, login).catch(() => "viewer" as const) : "viewer";
+  const mine = requests.some((r) => mayAnswer(v.config, r.stageId, login ?? "", role).ok);
+  return { ...v, needsMe: v.needsMe || (!!login && mine), extras: { ...v.extras, requests } };
+}
 
 function toView(p: ProjectSummary): mock.ProjectView {
   const staging = p.stages.find((s) => s.stageId === "staging");
@@ -55,14 +66,14 @@ export async function getViewerFor(repo: string): Promise<mock.Viewer> {
 export async function listProjects(): Promise<mock.ProjectView[]> {
   if (!live()) return mock.listProjects();
   const login = await gh.currentLogin();
-  return (await gh.getProjects(login)).map(toView);
+  return Promise.all((await gh.getProjects(login)).map((p) => withRequests(toView(p), login)));
 }
 
 export async function getProject(repoSlug: string): Promise<mock.ProjectView | null> {
   if (!live()) return mock.getProject(repoSlug);
   const login = await gh.currentLogin();
   const p = await gh.getProject(slugToRepo(repoSlug), login);
-  return p ? toView(p) : null;
+  return p ? withRequests(toView(p), login) : null;
 }
 
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
@@ -174,4 +185,16 @@ export async function getAllActivity(filter: ActivityFilter = {}): Promise<Activ
     }),
   );
   return applyFilter(lists.flat(), filter).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** A person OKs or declines a Claude session's request. Never callable as a Claude session. */
+export async function answerRequest(repo: string, requestId: string, ok: boolean): Promise<string | null> {
+  if (!live()) {
+    const v = await mock.getViewer();
+    return mock.answerDemoRequest(repo, requestId, v.login, v.role, ok);
+  }
+  const login = await gh.currentLogin();
+  if (!login) return "Sign in with GitHub first";
+  const r = await gh.answerRequest(login, repo, requestId, ok);
+  return r.ok ? null : r.error;
 }

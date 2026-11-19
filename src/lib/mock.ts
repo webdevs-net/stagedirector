@@ -2,6 +2,7 @@
 // for real GitHub-backed ones with the same signatures.
 import type {
   ActivityEvent,
+  PushRequest,
   Change,
   ProjectConfig,
   ProjectSummary,
@@ -27,6 +28,8 @@ export interface ProjectExtras {
   stagingReady: boolean;
   files: string[];
   outOfSyncNote: string | null;
+  /** Open requests from Claude sessions (waiting for a person's OK). */
+  requests: PushRequest[];
 }
 
 export type ProjectView = ProjectSummary & { extras: ProjectExtras };
@@ -166,6 +169,7 @@ function build(): ProjectView[] {
         stagingReady: true,
         files: ["style.css", "functions.php", "footer.php", "content-page.php", "DIVI-REMOVAL.md"],
         outOfSyncNote: "content-page.php has 2 lines that are not in git. They are saved in the backup before being replaced.",
+        requests: [],
       },
     },
   ];
@@ -200,6 +204,7 @@ function build(): ProjectView[] {
           stagingReady: false,
           files: [],
           outOfSyncNote: flavor === "sync" ? "footer.php was edited on the live server." : null,
+          requests: [],
         },
       });
     }
@@ -222,13 +227,18 @@ export async function getViewer(): Promise<Viewer> {
   return { login: "ryan", name: "Ryan", role: "code-owner" };
 }
 
+function withRequests(p: ProjectView): ProjectView {
+  const requests = demoRequests(p.repo);
+  return requests.length ? { ...p, needsMe: true, extras: { ...p.extras, requests } } : p;
+}
+
 export async function listProjects(): Promise<ProjectView[]> {
-  return PROJECTS.map(withPins);
+  return PROJECTS.map((p) => withRequests(withPins(p)));
 }
 
 export async function getProject(repoSlug: string): Promise<ProjectView | null> {
   const p = PROJECTS.find((x) => repoToSlug(x.repo) === repoSlug);
-  return p ? withPins(p) : null;
+  return p ? withRequests(withPins(p)) : null;
 }
 
 // Events recorded while the demo runs (e.g. check results). On globalThis: see PINS-style note below.
@@ -244,8 +254,11 @@ export async function recordEvent(repo: string, e: Omit<ActivityEvent, "id">): P
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   const p = await getProject(repoSlug);
   if (!p) return [];
+  const asks: ActivityEvent[] = demoRequests(p.repo).map((r) => ({ id: r.id, at: r.at, actor: r.actor, action: "request", stageId: r.stageId, commit: r.commit, wants: r.wants, note: r.note }));
   return [
     ...(EVENTS.get(p.repo) ?? []),
+    ...(p.repo === "netdevs-net/mariasplace" ? REQ.log : []),
+    ...asks,
     { id: "a1", at: ago(9), actor: "auto", action: "push", stageId: "staging", commit: sha(1), result: "passed", note: "Browsers load new styles right away. 2 files changed. Everything checked out." },
     { id: "a2", at: ago(10), actor: "ryan", action: "push", stageId: "staging", commit: sha(3), result: "passed", note: "New login page and sign-up pop-up designs. 1 file changed. Everything checked out." },
     { id: "a3", at: ago(17), actor: "ryan", action: "stop", stageId: "staging", result: "stopped", note: "It would have undone 2 files that were only on staging, so nothing was changed." },
@@ -357,5 +370,32 @@ export async function pinStage(repo: string, stageId: string, pin: boolean, role
   if (cfg.pushers === "code-owners" ? role !== "code-owner" : role === "viewer") return { error: `Only a code owner can pin ${cfg.name}` };
   if (pin) PINS.add(`${repo}|${stageId}`);
   else PINS.delete(`${repo}|${stageId}`);
+  return null;
+}
+
+// ---- Claude requests (demo). One sample request so the flow can be tried. ----
+
+const gr = globalThis as unknown as { __sdReq?: { open: PushRequest[]; log: ActivityEvent[] } };
+const REQ = (gr.__sdReq ??= {
+  open: [
+    { id: "req-demo-1", at: ago(4), actor: "claude:ryan", stageId: "staging", wants: "deploy", commit: sha(5), note: "asks to deploy: footer spacing fix (PR #34) is merged; put it on staging to check on phones" },
+  ],
+  log: [],
+});
+
+export function demoRequests(repo: string): PushRequest[] {
+  return repo === "netdevs-net/mariasplace" ? REQ.open : [];
+}
+
+export async function answerDemoRequest(repo: string, id: string, actor: string, role: Role, ok: boolean): Promise<string | null> {
+  const r = demoRequests(repo).find((x) => x.id === id);
+  if (!r) return "That request is already answered or gone";
+  if (actor.startsWith("claude:")) return "A Claude session can never OK a request; a person must";
+  const p = PROJECTS.find((x) => x.repo === repo);
+  const stage = p?.config.stages.find((s) => s.id === r.stageId);
+  if (!stage) return "No such stage";
+  if (stage.pushers === "code-owners" && role !== "code-owner") return `Only a code owner can OK a request for ${stage.name}`;
+  REQ.open = REQ.open.filter((x) => x.id !== id);
+  REQ.log.unshift({ id: `ans-${Date.now()}`, at: new Date().toISOString(), actor, action: ok ? "push" : "decline", stageId: r.stageId, commit: r.commit, answers: id, result: ok ? "queued" : undefined, note: ok ? `OK for ${r.actor}'s request` : `declined ${r.actor}'s request` });
   return null;
 }

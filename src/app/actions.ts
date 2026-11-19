@@ -34,3 +34,9 @@ export async function pinAction(repo: string, stageId: string, pin: boolean) {
 export async function runChecksAction(repoSlug: string, stageId: string, when: "before" | "after") {
   return data.runStageChecks(repoSlug, stageId, when);
 }
+
+// Server actions are only called from the dashboard's own pages by a signed-in
+// person (Claude sessions use the HTTP API with X-Stagedirector-Agent: claude).
+export async function answerRequestAction(repo: string, requestId: string, ok: boolean) {
+  return data.answerRequest(repo, requestId, ok);
+}

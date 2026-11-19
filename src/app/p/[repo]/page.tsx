@@ -5,6 +5,8 @@ import { BackLink, Button, ButtonLink, Card, Chevron, Icon, Page } from "@/compo
 import { UpdateStagingButton } from "@/components/UpdateStagingButton";
 import { RunOverlay } from "@/components/runs/RunOverlay";
 import { PinButton } from "@/components/PinButton";
+import { RequestsCard } from "@/components/RequestsCard";
+import { mayAnswer } from "@/lib/auth/permissions";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q } = await loadProject(params, searchParams);
@@ -21,6 +23,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const livePinned = !!st(last.id)?.pinned;
   const pinnable = stages.filter((s) => s.pushers !== "none");
   const mayPin = (s: (typeof stages)[number]) => (s.pushers === "code-owners" ? isOwner : viewer.role !== "viewer");
+  // Stages whose Claude requests this viewer may OK (the server checks again).
+  const answerable = stages.filter((s) => mayAnswer(p.config, s.id, viewer.login, viewer.role).ok).map((s) => s.id);
 
   return (
     <Page>
@@ -37,6 +41,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           <ButtonLink href={`${base}/history${q}`} className="rounded-full">History</ButtonLink>
         </nav>
       </header>
+
+      <RequestsCard repo={p.repo} requests={p.extras.requests} stages={stages} answerable={answerable} />
 
       <div className="flex flex-col gap-3">
         {p.busy && <Banner kind="busy" title={`${p.busy.by} is updating ${p.busy.stageId}`} detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${base}/updating${q}` }} />}

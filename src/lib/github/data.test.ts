@@ -33,4 +33,18 @@ describe("sample mode (no GitHub credentials)", () => {
     const r = await performAction("ryan", { repo: p.repo, stageId: "live", action: "approve", commit: "c".repeat(40) });
     expect(r.ok).toBe(false);
   });
+
+  it("a Claude request waits for a person; claude: can never answer it", async () => {
+    const { performAction, getProjects, openRequests, answerRequest } = await import("./data");
+    const p = (await getProjects())[0];
+    const staging = p.stages.find((s) => s.stageId === "staging")!.commit!;
+    const r = await performAction("claude:ryan", { repo: p.repo, stageId: "staging", action: "deploy", commit: staging, note: "please" });
+    expect(r.ok && r.recordedAs).toBe("request");
+    const open = await openRequests(p.repo);
+    const id = open.find((x) => x.wants === "deploy" && x.stageId === "staging")!.id;
+    expect((await answerRequest("claude:ryan", p.repo, id, true)).ok).toBe(false);
+    expect((await answerRequest("claude:ryan", p.repo, id, false)).ok).toBe(false);
+    expect((await answerRequest("ryan", p.repo, id, false)).ok).toBe(true);
+    expect((await openRequests(p.repo)).some((x) => x.id === id)).toBe(false);
+  });
 });

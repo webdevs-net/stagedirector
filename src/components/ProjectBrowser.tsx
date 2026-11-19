@@ -51,6 +51,7 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
     ready: needs.filter((p) => healthOf(p) === "ready").length,
     sync: needs.filter((p) => healthOf(p) === "sync").length,
     fail: needs.filter((p) => healthOf(p) === "fail").length,
+    asks: needs.reduce((n, p) => n + (p.extras.requests?.length ?? 0), 0),
   };
 
   const pill = (active: boolean) =>
@@ -64,7 +65,7 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
           <span className="flex min-w-[200px] flex-1 flex-col">
             <h2 id="waiting-title" className="text-lg font-extrabold">Waiting on you</h2>
             <span className="text-[15px] text-soft">
-              {counts.ready} ready for live · {counts.sync} out of sync · {counts.fail} failed check
+              {counts.ready} ready for live · {counts.sync} out of sync · {counts.fail} failed check{counts.asks ? ` · ${counts.asks} Claude ${counts.asks === 1 ? "request" : "requests"}` : ""}
             </span>
           </span>
           <button type="button" onClick={() => setFilter("needs")} className="min-h-[52px] rounded-2xl bg-blue px-5 font-extrabold text-white">
