@@ -35,11 +35,11 @@ Everyday work up top: your branch on the left, staging on the right, one big but
 
 <img src="docs/screenshots/project.png" alt="Project page for Maria's Place" width="900">
 
-The page adapts to who you are. A **developer** sees the same project without the live controls; a **code owner** gets **Review and approve**.
+The page adapts to who you are. A **code owner** gets **Review and approve**, then **Put on live**. A **developer** sees the same steps with **Ask a code owner** instead, and live stays locked.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/project-developer.png" alt="Developer view"><br><sub><b>Developer view</b>: staging only</sub></td>
+<td width="50%"><img src="docs/screenshots/project-developer.png" alt="Developer view"><br><sub><b>Developer view</b>: live is locked, "Ask a code owner"</sub></td>
 <td width="50%"><img src="docs/screenshots/review.png" alt="Review screen"><br><sub><b>Before you put it live</b>: before & after for each change, then the to-do list for live</sub></td>
 </tr>
 </table>
