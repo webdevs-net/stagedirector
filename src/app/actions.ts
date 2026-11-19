@@ -22,3 +22,7 @@ export async function approveForLive(repo: string, commit: string): Promise<{ ok
   console.log("[stub] approve", repo, commit);
   return { ok: true };
 }
+
+export async function pinAction(repo: string, stageId: string, pin: boolean) {
+  return data.pinStage(repo, stageId, pin);
+}

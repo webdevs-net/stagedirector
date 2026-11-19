@@ -3,7 +3,7 @@ import type { Octokit } from "@octokit/rest";
 import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, Role, StageStatus } from "@/lib/types";
 import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
 import { configuredRepos, getOctokit, selfLogin, splitRepo } from "./client";
-import { changesBetween, readConfig, recentRuns, roleSource, stageStatuses, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { changesBetween, readConfig, recentRuns, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 
@@ -30,7 +30,7 @@ async function loadConfig(gh: Octokit, repo: string): Promise<ProjectConfig | nu
 async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login: string | null): Promise<ProjectSummary> {
   const store = storeFor(gh);
   const [stages, runs] = await Promise.all([
-    stageStatuses(gh, repo, config, (id) => store.pinned(repo, id)),
+    stageStatuses(gh, repo, config, (id) => pinRefExists(gh, repo, id).catch(() => store.pinned(repo, id))),
     recentRuns(gh, repo, 10),
   ]);
   const n = stages.length;
@@ -173,6 +173,7 @@ export async function performAction(actor: string, input: ActionInput): Promise<
     commit: input.commit,
     previousStageCommit: prev?.commit ?? null,
     approval,
+    pinned: stages[idx].pinned,
   });
   if (!decision.allowed) return { ok: false, status: 403, error: decision.reason };
 

@@ -88,3 +88,15 @@ export async function startRun(repo: string, stageId: string, kind: mock.RunKind
   }
   return mock.startRun(repo, stageId, kind);
 }
+
+/** Pin or unpin a stage. Pinned stages take no updates or undos until unpinned (same rule as the workflow). */
+export async function pinStage(repo: string, stageId: string, pin: boolean): Promise<string | null> {
+  if (!live()) {
+    const viewer = await mock.getViewer();
+    return (await mock.pinStage(repo, stageId, pin, viewer.role))?.error ?? null;
+  }
+  const login = await gh.currentLogin();
+  if (!login) return "Sign in with GitHub first";
+  const r = await gh.performAction(login, { repo, stageId, action: pin ? "pin" : "unpin" });
+  return r.ok ? null : r.error;
+}
