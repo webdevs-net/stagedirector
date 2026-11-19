@@ -1,0 +1,464 @@
+# Stage Director workflow.
+#
+# Copy this file to .github/workflows/stagedirector.yml in each project repo, next to a
+# stagedirector.yml at the repo root (see examples/ in the Stage Director repo).
+# Change only the `branches:` list under `push:` so it matches `branch:` in stagedirector.yml.
+#
+# What it does
+#   push to the config branch          -> deploys the first stage with `trigger: auto`
+#   workflow_dispatch (from dashboard) -> deploy | rollback | pin | unpin | clear-cache
+#
+# Locks, in order (any one refuses the run; see engine/contract.md "Live gate"):
+#   1. Policy comes from stagedirector.yml on the DEFAULT branch, never from the commit
+#      being deployed, so a commit cannot loosen its own rules.
+#   2. Dispatches must run the workflow from the default branch.
+#   3. Pinned stage -> refused.
+#   4. pushers: none -> refused. developers -> actor needs write access.
+#      code-owners -> actor (and triggering actor) must be listed in CODEOWNERS on the
+#      default branch, must not be a bot, and requested_by must not start with "claude:".
+#   5. deploy into a code-owners stage needs a recorded approval for that exact commit:
+#      the newest commit status "stagedirector/approval/<stage>" on the commit must be
+#      `success` and created by a code owner (GitHub records the creator; a bot or the
+#      workflow token cannot pass). Descriptions starting with "claude:" are refused.
+#   6. Strict order: the previous stage (with a deploy command) must currently be on the
+#      same commit (latest successful GitHub Deployment for that environment).
+#   7. The run job uses the GitHub Environment "stagedirector-<stage>". Its secrets (the
+#      host SSH key) are only released to jobs from the default branch and, for live,
+#      after a required reviewer (code owner) approves. This holds even if someone edits
+#      this file on a branch.
+
+name: Stage Director
+
+on:
+  push:
+    branches: [main] # keep equal to `branch:` in stagedirector.yml
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage id from stagedirector.yml (e.g. staging, live)
+        required: true
+        type: string
+      commit:
+        description: Full 40-character commit SHA
+        required: true
+        type: string
+      action:
+        description: What to do
+        required: true
+        type: choice
+        default: deploy
+        options: [deploy, rollback, pin, unpin, clear-cache]
+      requested_by:
+        description: Who asked (GitHub login, or claude:<login> for an AI session acting for a person)
+        required: true
+        type: string
+
+permissions:
+  contents: write # pin refs (refs/stagedirector/pins/<stage>), git fetch
+  deployments: write # GitHub Deployments + statuses
+  statuses: read # approval records
+  actions: read
+
+# One push at a time per project. A newer run waits; GitHub keeps only the newest
+# pending run per group, so a third run while one runs and one waits replaces the waiting one.
+concurrency:
+  group: stagedirector-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Check rules
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+      stage: ${{ steps.gate.outputs.stage }}
+      stage_json: ${{ steps.gate.outputs.stage_json }}
+      tools_json: ${{ steps.gate.outputs.tools_json }}
+      is_last: ${{ steps.gate.outputs.is_last }}
+      commit: ${{ steps.gate.outputs.commit }}
+      action: ${{ steps.gate.outputs.action }}
+      runner: ${{ steps.gate.outputs.runner }}
+      environment: ${{ steps.gate.outputs.environment }}
+      gated: ${{ steps.gate.outputs.gated }}
+      approved_by: ${{ steps.gate.outputs.approved_by }}
+      approved_at: ${{ steps.gate.outputs.approved_at }}
+      requested_by: ${{ steps.gate.outputs.requested_by }}
+    steps:
+      - name: Check out default branch (policy source)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Apply rules
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PUSH_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          IN_STAGE: ${{ inputs.stage }}
+          IN_COMMIT: ${{ inputs.commit }}
+          IN_ACTION: ${{ inputs.action }}
+          IN_REQUESTED_BY: ${{ inputs.requested_by }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Stage Director refused::$*"; printf '### Refused\n\n%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
+          out()  { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+          api()  { gh api -H 'X-GitHub-Api-Version: 2022-11-28' "$@"; }
+          stop() { echo "$*"; out go false; exit 0; }
+
+          # ---- policy: stagedirector.yml from the default branch ----------------------
+          [ -f stagedirector.yml ] || fail "No stagedirector.yml on $DEFAULT_BRANCH."
+          CFG="$RUNNER_TEMP/sd-config.json"
+          python3 -c 'import sys, json, yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))' stagedirector.yml > "$CFG" \
+            || fail "stagedirector.yml on $DEFAULT_BRANCH is not valid YAML (runner needs python3-yaml)."
+          jq -e '.version == 1 and (.stages | type == "array")' "$CFG" >/dev/null || fail "stagedirector.yml: needs version: 1 and a stages list."
+          BRANCH="$(jq -r '.branch' "$CFG")"
+
+          # ---- what was asked ----------------------------------------------------------
+          if [ "$EVENT" = push ]; then
+            [ "$REF_NAME" = "$BRANCH" ] || stop "Push to $REF_NAME; config branch is $BRANCH. Nothing to do."
+            STAGE="$(jq -r '[.stages[] | select(.trigger == "auto" and (.deploy // "") != "")][0].id // empty' "$CFG")"
+            [ -n "$STAGE" ] || stop "No stage with trigger: auto. Nothing to do."
+            COMMIT="$PUSH_SHA"; ACTION=deploy; REQUESTED_BY=auto
+          else
+            [ "$REF" = "refs/heads/$DEFAULT_BRANCH" ] || fail "Start this workflow from $DEFAULT_BRANCH (got $REF). Pass the commit as an input."
+            STAGE="$IN_STAGE"; COMMIT="$IN_COMMIT"; ACTION="$IN_ACTION"; REQUESTED_BY="$IN_REQUESTED_BY"
+          fi
+          [[ "$STAGE" =~ ^[a-z0-9][a-z0-9_-]{0,39}$ ]] || fail "Stage id '$STAGE' is not valid."
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character lowercase SHA."
+          case "$ACTION" in deploy|rollback|pin|unpin|clear-cache) ;; *) fail "Unknown action '$ACTION'." ;; esac
+          [[ "$REQUESTED_BY" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || fail "requested_by '$REQUESTED_BY' is not valid."
+          git cat-file -e "$COMMIT^{commit}" 2>/dev/null || git fetch -q origin "$COMMIT" 2>/dev/null || true
+          git cat-file -e "$COMMIT^{commit}" 2>/dev/null || fail "Commit $COMMIT is not in this repository."
+
+          IDX="$(jq -r --arg s "$STAGE" '.stages | map(.id) | index($s) // empty' "$CFG")"
+          [ -n "$IDX" ] || fail "Stage '$STAGE' is not in stagedirector.yml on $DEFAULT_BRANCH."
+          S="$(jq -c ".stages[$IDX]" "$CFG")"
+          PUSHERS="$(jq -r '.pushers' <<<"$S")"
+          RUNNER="$(jq -r '.runner // empty' <<<"$S")"
+          LAST_IDX="$(jq -r '.stages | length - 1' "$CFG")"
+          if [ "$IDX" = "$LAST_IDX" ]; then IS_LAST=true; else IS_LAST=false; fi
+          case "$ACTION" in
+            deploy)   [ -n "$(jq -r '.deploy // empty' <<<"$S")" ] || fail "Stage '$STAGE' has no deploy command." ;;
+            rollback) [ -n "$(jq -r '.rollback // empty' <<<"$S")" ] || fail "Stage '$STAGE' has no rollback command." ;;
+            clear-cache) [ -n "$(jq -r '.tools.clearCache // empty' "$CFG")" ] || fail "No tools.clearCache command." ;;
+          esac
+          case "$ACTION" in deploy|rollback|clear-cache) [[ "$RUNNER" =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Stage '$STAGE' needs a runner label." ;; esac
+
+          # ---- who may act -------------------------------------------------------------
+          codeowners() { # logins on the last "*" line of CODEOWNERS on the default branch; teams expanded
+            local f line owner
+            for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do [ -f "$f" ] && break; done
+            [ -f "$f" ] || fail "No CODEOWNERS file on $DEFAULT_BRANCH."
+            line="$(grep -E '^[[:space:]]*\*([[:space:]]|$)' "$f" | tail -1 || true)"
+            [ -n "$line" ] || fail "CODEOWNERS has no '*' line, so nobody owns the whole project."
+            for owner in $line; do
+              case "$owner" in
+                \*|\#*) continue ;;
+                @*/*) t="${owner#@}"; api "orgs/${t%%/*}/teams/${t#*/}/members" --paginate --jq '.[].login' \
+                        || fail "Cannot read team $owner. List people in CODEOWNERS, or give the workflow a token that can read teams." ;;
+                @*) echo "${owner#@}" ;;
+              esac
+            done | tr '[:upper:]' '[:lower:]' | sort -u
+          }
+          is_owner() { local who; who="$(tr '[:upper:]' '[:lower:]' <<<"$1")"; grep -qxF "$who" <<<"$OWNERS"; }
+          is_person() { [[ "$1" != *"[bot]" && "$1" != claude:* && "$1" != Claude:* && -n "$1" ]]; }
+
+          GATED=false
+          case "$PUSHERS" in
+            none) fail "Stage '$STAGE' takes no pushes from Stage Director (pushers: none)." ;;
+            developers)
+              PERM="$(api "repos/$REPO/collaborators/$ACTOR/permission" --jq '.permission' 2>/dev/null || echo none)"
+              case "$PERM" in admin|maintain|write) ;; *) fail "$ACTOR needs write access to push to $STAGE (has: $PERM)." ;; esac
+              ;;
+            code-owners)
+              GATED=true
+              OWNERS="$(codeowners)"
+              [ -n "$OWNERS" ] || fail "CODEOWNERS lists nobody."
+              [ "$EVENT" = workflow_dispatch ] || fail "Stage '$STAGE' is for code owners; it never runs on push."
+              for who in "$ACTOR" "$TRIGGERING_ACTOR"; do
+                is_person "$who" || fail "$who is not a person; only a code owner may act on $STAGE."
+                is_owner "$who"  || fail "$who is not a code owner (CODEOWNERS on $DEFAULT_BRANCH), so cannot act on $STAGE."
+              done
+              is_person "$REQUESTED_BY" || fail "Requested by '$REQUESTED_BY'. AI sessions and bots never act on $STAGE; a code owner must press the button."
+              ;;
+            *) fail "Stage '$STAGE' has unknown pushers '$PUSHERS'." ;;
+          esac
+
+          # ---- pinned ------------------------------------------------------------------
+          PIN_REF="stagedirector/pins/$STAGE"
+          if api "repos/$REPO/git/ref/$PIN_REF" >/dev/null 2>&1; then PINNED=true; else PINNED=false; fi
+          if [ "$ACTION" = pin ]; then
+            if [ "$PINNED" = true ]; then
+              api -X PATCH "repos/$REPO/git/refs/$PIN_REF" -f sha="$COMMIT" -F force=true >/dev/null
+            else
+              api -X POST "repos/$REPO/git/refs" -f ref="refs/$PIN_REF" -f sha="$COMMIT" >/dev/null
+            fi
+            printf 'Pinned **%s** by %s (asked by %s).\n' "$STAGE" "$ACTOR" "$REQUESTED_BY" >> "$GITHUB_STEP_SUMMARY"
+            stop "Pinned $STAGE."
+          fi
+          if [ "$ACTION" = unpin ]; then
+            [ "$PINNED" = false ] || api -X DELETE "repos/$REPO/git/refs/$PIN_REF" >/dev/null
+            printf 'Unpinned **%s** by %s (asked by %s).\n' "$STAGE" "$ACTOR" "$REQUESTED_BY" >> "$GITHUB_STEP_SUMMARY"
+            stop "Unpinned $STAGE."
+          fi
+          if [ "$PINNED" = true ] && [ "$ACTION" != clear-cache ]; then
+            fail "Stage '$STAGE' is pinned. Unpin it first."
+          fi
+
+          # ---- approval for this exact commit (code-owner stages, deploy) ---------------
+          APPROVED_BY=""; APPROVED_AT=""
+          if [ "$GATED" = true ] && [ "$ACTION" = deploy ]; then
+            CTX="stagedirector/approval/$STAGE"
+            REC="$(api "repos/$REPO/commits/$COMMIT/statuses?per_page=100" --paginate \
+                   | jq -s -c --arg c "$CTX" 'add | map(select(.context == $c)) | sort_by(.created_at) | last // empty')"
+            [ -n "$REC" ] || fail "Commit ${COMMIT:0:7} has no approval for $STAGE. A code owner must approve it after checking the previous stage."
+            STATE="$(jq -r '.state' <<<"$REC")"
+            APPROVED_BY="$(jq -r '.creator.login // empty' <<<"$REC")"
+            APPROVED_AT="$(jq -r '.created_at' <<<"$REC")"
+            DESC="$(jq -r '.description // ""' <<<"$REC")"
+            [ "$STATE" = success ] || fail "Latest approval record for ${COMMIT:0:7} on $STAGE is '$STATE' (withdrawn or refused)."
+            is_person "$APPROVED_BY" || fail "Approval for ${COMMIT:0:7} was recorded by '$APPROVED_BY', not a person."
+            case "$DESC" in claude:*|Claude:*) fail "Approval for ${COMMIT:0:7} came from an AI session. Only a code owner may approve." ;; esac
+            is_owner "$APPROVED_BY" || fail "Approval for ${COMMIT:0:7} is by $APPROVED_BY, who is not a code owner."
+          fi
+
+          # ---- strict order ------------------------------------------------------------
+          current_sha() { # sha of the newest deployment in env $1 whose newest status is success
+            local id state
+            for id in $(api "repos/$REPO/deployments?environment=$1&per_page=30" --jq '.[].id'); do
+              state="$(api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state // empty')"
+              if [ "$state" = success ]; then api "repos/$REPO/deployments/$id" --jq '.sha'; return 0; fi
+            done
+          }
+          if [ "$ACTION" = deploy ]; then
+            P=$((IDX - 1)); PREV=""
+            while [ "$P" -ge 0 ]; do
+              if [ -n "$(jq -r ".stages[$P].deploy // empty" "$CFG")" ]; then PREV="$(jq -r ".stages[$P].id" "$CFG")"; break; fi
+              P=$((P - 1))
+            done
+            if [ -n "$PREV" ]; then
+              ON_PREV="$(current_sha "$PREV")"
+              [ "$ON_PREV" = "$COMMIT" ] || fail "Strict order: $PREV is on ${ON_PREV:-nothing}, not ${COMMIT:0:7}. Push the commit to $PREV first."
+            fi
+          fi
+
+          out go true
+          out stage "$STAGE"
+          out stage_json "$S"
+          out tools_json "$(jq -c '.tools // {}' "$CFG")"
+          out is_last "$IS_LAST"
+          out commit "$COMMIT"
+          out action "$ACTION"
+          out runner "$RUNNER"
+          out environment "stagedirector-$STAGE"
+          out gated "$GATED"
+          out approved_by "$APPROVED_BY"
+          out approved_at "$APPROVED_AT"
+          out requested_by "$REQUESTED_BY"
+          {
+            echo "### Rules passed"
+            echo "- Stage: **$STAGE** · action: **$ACTION** · commit: \`$COMMIT\`"
+            echo "- Actor: $ACTOR · requested by: $REQUESTED_BY"
+            [ -z "$APPROVED_BY" ] || echo "- Approved by $APPROVED_BY at $APPROVED_AT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  run:
+    name: ${{ needs.gate.outputs.action }} ${{ needs.gate.outputs.stage }}
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
+    runs-on: [self-hosted, "${{ needs.gate.outputs.runner }}"]
+    environment:
+      name: ${{ needs.gate.outputs.environment }}
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      STAGE: ${{ needs.gate.outputs.stage }}
+      STAGE_JSON: ${{ needs.gate.outputs.stage_json }}
+      TOOLS_JSON: ${{ needs.gate.outputs.tools_json }}
+      IS_LAST: ${{ needs.gate.outputs.is_last }}
+      COMMIT: ${{ needs.gate.outputs.commit }}
+      ACTION: ${{ needs.gate.outputs.action }}
+      GATED: ${{ needs.gate.outputs.gated }}
+      APPROVED_BY: ${{ needs.gate.outputs.approved_by }}
+      APPROVED_AT: ${{ needs.gate.outputs.approved_at }}
+      REQUESTED_BY: ${{ needs.gate.outputs.requested_by }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - name: Check out ${{ needs.gate.outputs.commit }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.commit }}
+          fetch-depth: 0
+
+      - name: Load host SSH key (environment secret)
+        env:
+          SSH_KEY: ${{ secrets.STAGEDIRECTOR_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$SSH_KEY" ] || { echo "::error::Environment stagedirector-$STAGE has no STAGEDIRECTOR_SSH_KEY secret."; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::Checked-out commit is not $COMMIT."; exit 1; }
+          SOCK="$RUNNER_TEMP/sd-agent.sock"
+          eval "$(ssh-agent -a "$SOCK" -s)" >/dev/null
+          printf '%s\n' "$SSH_KEY" | ssh-add -q -
+          { echo "SSH_AUTH_SOCK=$SOCK"; echo "SSH_AGENT_PID=$SSH_AGENT_PID"; } >> "$GITHUB_ENV"
+
+      - name: Write approval file
+        if: needs.gate.outputs.gated == 'true' && (needs.gate.outputs.action == 'deploy' || needs.gate.outputs.action == 'rollback')
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/stagedirector-approval.json"
+          BY="$APPROVED_BY"; AT="$APPROVED_AT"
+          if [ "$ACTION" = rollback ]; then BY="$ACTOR"; AT="$(date -u +%FT%TZ)"; fi
+          umask 077
+          jq -n \
+            --arg repo "$REPO" --arg stage "$STAGE" --arg commit "$COMMIT" --arg action "$ACTION" \
+            --arg by "$BY" --arg at "$AT" --arg actor "$ACTOR" --arg req "$REQUESTED_BY" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg exp "$(date -u -d '+45 minutes' +%FT%TZ)" \
+            '{version: 1, repo: $repo, stageId: $stage, commit: $commit, action: $action,
+              by: $by, at: $at, actor: $actor, requestedBy: $req, runUrl: $run, expiresAt: $exp}' > "$F"
+          echo "STAGEDIRECTOR_APPROVAL=$F" >> "$GITHUB_ENV"
+
+      - name: Run ${{ needs.gate.outputs.action }}
+        env:
+          BASIC_AUTH: ${{ secrets.STAGEDIRECTOR_BASIC_AUTH }}
+        run: |
+          set -uo pipefail
+          api()  { gh api -H 'X-GitHub-Api-Version: 2022-11-28' "$@"; }
+          say()  { echo "$*"; echo "$*" >> "$GITHUB_STEP_SUMMARY"; }
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          URL="$(jq -r '.url // empty' <<<"$STAGE_JSON")"
+          DEPLOY_CMD="$(jq -r '.deploy // empty' <<<"$STAGE_JSON")"
+          ROLLBACK_CMD="$(jq -r '.rollback // empty' <<<"$STAGE_JSON")"
+          CLEAR_CMD="$(jq -r '.clearCache // empty' <<<"$TOOLS_JSON")"
+          export STAGEDIRECTOR=1 STAGEDIRECTOR_STAGE="$STAGE" STAGEDIRECTOR_COMMIT="$COMMIT" \
+                 STAGEDIRECTOR_ACTOR="$ACTOR" STAGEDIRECTOR_REQUESTED_BY="$REQUESTED_BY" STAGEDIRECTOR_RUN_URL="$RUN_URL"
+
+          fill() { # fill(template, backup) -> command with {backup} {commit} {stage} replaced
+            local c="$1"; c="${c//\{backup\}/$2}"; c="${c//\{commit\}/$COMMIT}"; printf '%s' "${c//\{stage\}/$STAGE}"
+          }
+          run_cmd() { # run_cmd(label, command) ; output in $LOG, exit code returned
+            LOG="$RUNNER_TEMP/sd-$1.log"
+            echo "::group::$1: $2"
+            bash -c "$2" 2>&1 | tee "$LOG"; local rc=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            return "$rc"
+          }
+          set_status() { # set_status(deployment_id, state, description)
+            local args=(-X POST "repos/$REPO/deployments/$1/statuses" -f state="$2" -f description="${3:0:139}" -f log_url="$RUN_URL" -F auto_inactive=false)
+            [ -z "$URL" ] || args+=(-f environment_url="$URL")
+            api "${args[@]}" >/dev/null || echo "::warning::Could not set deployment status $2."
+          }
+          smoke() {
+            local base="${URL%/}" p code bad=0 auth=()
+            [ -n "$URL" ] || { say "No url for $STAGE; smoke test skipped."; return 0; }
+            [ -z "$BASIC_AUTH" ] || auth=(-K -)
+            while IFS= read -r p; do
+              [ -n "$p" ] || continue
+              if [ -n "$BASIC_AUTH" ]; then
+                code="$(printf 'user = "%s"\n' "$BASIC_AUTH" | curl -s -o /dev/null -m 20 -w '%{http_code}' -A 'StageDirector/1' "${auth[@]}" "$base$p" || true)"
+              else
+                code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' -A 'StageDirector/1' "$base$p" || true)"
+              fi
+              say "  $code $base$p"
+              case "$code" in
+                2??) ;;
+                401) [ "$IS_LAST" = false ] || bad=1 ;; # 401 = password-protected staging; never OK on the last stage
+                *) bad=1 ;;
+              esac
+            done < <(jq -r '.smokeTest[]?' <<<"$STAGE_JSON")
+            return "$bad"
+          }
+          clear_cache() {
+            [ -n "$CLEAR_CMD" ] || return 0
+            run_cmd clear-cache "$CLEAR_CMD" || say "Clear cache failed (site is deployed; clear it by hand)."
+          }
+          current_deployment() { # prints "id sha backup" of the newest deployment whose newest status is success
+            local id st
+            for id in $(api "repos/$REPO/deployments?environment=$STAGE&per_page=30" --jq '.[].id'); do
+              st="$(api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0] | [.state, .description] | @tsv')"
+              if [ "${st%%$'\t'*}" = success ]; then
+                printf '%s %s %s\n' "$id" "$(api "repos/$REPO/deployments/$id" --jq .sha)" "$(sed -n 's/.*backup=\([A-Za-z0-9._:-]*\).*/\1/p' <<<"${st#*$'\t'}")"
+                return 0
+              fi
+            done
+          }
+
+          case "$ACTION" in
+          clear-cache)
+            [ -n "$CLEAR_CMD" ] || { say "No clearCache command."; exit 1; }
+            run_cmd clear-cache "$CLEAR_CMD"; exit $?
+            ;;
+
+          rollback)
+            read -r DEP_ID DEP_SHA BACKUP <<<"$(current_deployment)"
+            [ -n "${DEP_ID:-}" ] || { say "No successful deployment on $STAGE to undo."; exit 1; }
+            [ "$DEP_SHA" = "$COMMIT" ] || { say "$STAGE is on ${DEP_SHA:0:7}, not ${COMMIT:0:7}. Refresh and try again."; exit 1; }
+            [ -n "${BACKUP:-}" ] || { say "No backup id recorded for that deployment; roll back by hand."; exit 1; }
+            if run_cmd rollback "$(fill "$ROLLBACK_CMD" "$BACKUP")"; then
+              set_status "$DEP_ID" inactive "Undone by $ACTOR (backup $BACKUP restored)"
+              clear_cache
+              say "Rolled back $STAGE: restored backup $BACKUP (undid ${COMMIT:0:7})."
+              exit 0
+            fi
+            say "ROLLBACK FAILED on $STAGE. Check the site now."; exit 1
+            ;;
+
+          deploy)
+            PAYLOAD="$(jq -n --arg r "$REQUESTED_BY" --arg a "$APPROVED_BY" --arg run "$RUN_URL" '{requestedBy: $r, approvedBy: $a, runUrl: $run}')"
+            DEP_ID="$(jq -n --arg ref "$COMMIT" --arg env "$STAGE" --argjson p "$PAYLOAD" --argjson prod "$IS_LAST" \
+                       '{ref: $ref, environment: $env, task: "deploy", auto_merge: false, required_contexts: [],
+                         payload: $p, production_environment: $prod, transient_environment: false,
+                         description: ("Stage Director: " + $p.requestedBy)}' \
+                     | api -X POST "repos/$REPO/deployments" --input - --jq '.id')" || { say "Could not create the GitHub Deployment."; exit 1; }
+            set_status "$DEP_ID" in_progress "Deploying ${COMMIT:0:7}"
+
+            run_cmd deploy "$(fill "$DEPLOY_CMD" "")"; RC=$?
+            BACKUP="$(grep -o '^STAGEDIRECTOR_BACKUP=[A-Za-z0-9._:-]*' "$LOG" | tail -1 | cut -d= -f2)"
+            if [ "$RC" -eq 2 ]; then
+              set_status "$DEP_ID" failure "Refused by the deploy command; nothing changed"
+              say "Deploy command refused (exit 2). Nothing on $STAGE changed."; exit 1
+            fi
+            if [ "$RC" -eq 0 ] && smoke; then
+              set_status "$DEP_ID" success "Deployed by ${REQUESTED_BY} backup=${BACKUP:-none}"
+              clear_cache
+              say "Deployed ${COMMIT:0:7} to $STAGE."
+              exit 0
+            fi
+
+            # ---- Safety net ----
+            say "Deploy or smoke test FAILED on $STAGE (exit $RC)."
+            if [ -n "$BACKUP" ] && [ -n "$ROLLBACK_CMD" ]; then
+              if run_cmd rollback "$(fill "$ROLLBACK_CMD" "$BACKUP")"; then
+                set_status "$DEP_ID" failure "Failed; Safety net put the previous version back (backup $BACKUP)"
+                clear_cache
+                say "Safety net: restored backup $BACKUP. $STAGE is back on its previous version."
+              else
+                set_status "$DEP_ID" error "Failed AND rollback failed (backup $BACKUP). Check the site now"
+                say "ROLLBACK FAILED. Check $STAGE now. Backup id: $BACKUP"
+              fi
+            else
+              set_status "$DEP_ID" error "Failed; no backup id reported, nothing rolled back. Check the site"
+              say "No backup id reported by the deploy command; nothing rolled back. Check $STAGE now."
+            fi
+            exit 1
+            ;;
+          esac
+
+      - name: Clean up
+        if: always()
+        run: |
+          [ -z "${STAGEDIRECTOR_APPROVAL:-}" ] || rm -f "$STAGEDIRECTOR_APPROVAL"
+          [ -z "${SSH_AGENT_PID:-}" ] || ssh-agent -k >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP"/sd-*.log "$RUNNER_TEMP/sd-config.json"
