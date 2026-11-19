@@ -4,7 +4,7 @@ import "./globals.css";
 import { RunsProvider } from "@/components/runs/RunsProvider";
 import { RunWindow } from "@/components/runs/RunWindow";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { githubLimitedUntil, isDemo } from "@/lib/data";
+import { githubLimitedUntil, isDemo, pollSeconds } from "@/lib/data";
 
 const nunito = Nunito({ variable: "--font-nunito", subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 
@@ -20,8 +20,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 rounded-xl bg-white px-4 py-3 font-bold">
           Skip to content
         </a>
-        <RunsProvider>
-          <LiveRefresh demo={isDemo()} limitedUntil={githubLimitedUntil()} />
+        <RunsProvider idleMs={pollSeconds() * 1000}>
+          <LiveRefresh demo={isDemo()} limitedUntil={githubLimitedUntil()} everyMs={pollSeconds() * 1000} />
           <main id="main" className="min-h-screen px-4 pt-8 pb-48 sm:px-6 sm:py-10">{children}</main>
           <RunWindow />
         </RunsProvider>

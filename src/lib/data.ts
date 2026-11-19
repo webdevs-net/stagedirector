@@ -2,7 +2,7 @@
 // (see .env.example) it reads real projects through src/lib/github; without
 // them it serves the built-in demo data from ./mock so the app still runs.
 import "server-only";
-import { swr } from "./github/swr";
+import { revalidateAll, swr } from "./github/swr";
 import { rateLimit, rateLimited } from "./github/client";
 import { headers } from "next/headers";
 
@@ -102,6 +102,21 @@ export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
 /** When GitHub's hourly limit is nearly used up: the time it resets (epoch ms), else null. */
 export function githubLimitedUntil(): number | null {
   return live() && rateLimited() ? rateLimit.resetAt : null;
+}
+
+/**
+ * How often open pages re-read GitHub in the background, in seconds.
+ * STAGEDIRECTOR_POLL_SECONDS (default 300 = 5 min, minimum 15). Clicks and the
+ * Refresh button still update at once; a run that is going is followed every 2 s.
+ */
+export function pollSeconds(): number {
+  const n = Number(process.env.STAGEDIRECTOR_POLL_SECONDS);
+  return Number.isFinite(n) && n > 0 ? Math.max(15, n) : 300;
+}
+
+/** Timed poll / Refresh button: fetch fresh GitHub data into the cache before the page re-renders. */
+export async function refreshFromGithub(): Promise<void> {
+  if (live()) await revalidateAll();
 }
 
 export function isDemo(): boolean {

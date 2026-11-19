@@ -39,3 +39,13 @@ describe("swr waitMs", () => {
     expect(await swr("w2", -1, slow, 20)).toBe("old");
   });
 });
+
+describe("revalidateAll", () => {
+  it("re-reads every key and keeps serving the new value", async () => {
+    const { revalidateAll } = await import("./swr");
+    let n = 0;
+    await swr("r1", 60_000, async () => ++n);
+    await revalidateAll();
+    expect(await swr("r1", 60_000, async () => ++n)).toBe(2);
+  });
+});
