@@ -1,0 +1,13 @@
+# /etc/systemd/system/stagedirector-dispatch@.timer
+# systemctl enable --now stagedirector-dispatch@meru-staging.timer stagedirector-dispatch@meru-live.timer
+[Unit]
+Description=Stage Director runner dispatch tick (%i)
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=20s
+AccuracySec=5s
+RandomizedDelaySec=3s
+
+[Install]
+WantedBy=timers.target

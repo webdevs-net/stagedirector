@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+# Stage Director runner dispatcher. Runs ON the host from a systemd timer (every 20 s).
+# NOT RUN YET; the owner installs it by hand.
+#
+#   stagedirector-runner-dispatch <instance>        e.g. meru-staging
+#
+# Quiet by design: no runner waits while nothing is queued. Each tick is one or two HTTPS
+# calls to GitHub (outbound only) and exits in well under a second, printing nothing.
+# When a job for this instance's label is queued, it asks GitHub for a single-use JIT runner
+# config and starts ONE ephemeral runner container, which takes that job and is removed.
+#
+# Settings: /etc/stagedirector/runner-<instance>.env (root, 600):
+#   REPO=netdevs-net/Meru
+#   LABEL=meru-staging
+#   GH_TOKEN_FILE=/etc/stagedirector/runner-<instance>.token   fine-grained PAT, this repo only,
+#                                                              Administration: write, Actions: read
+#   BUNDLE_DIR=/opt/stagedirector/compose                     engine/compose, image pre-built
+#   BROKER_SOCKET=/run/stagedirector/<instance>.sock
+#   BROKER_GID=<gid of group sd-<instance>>
+#   RUNNER_GROUP_ID=1                                         runner group (Default = 1)
+# The token never enters the container; only the single-use JIT config does.
+
+set -euo pipefail
+INSTANCE="${1:-}"
+[[ "$INSTANCE" =~ ^[a-z0-9-]+$ ]] || { echo "usage: $0 <instance>" >&2; exit 2; }
+CONF="/etc/stagedirector/runner-$INSTANCE.env"
+[ -r "$CONF" ] || { echo "missing $CONF" >&2; exit 2; }
+REPO="$(sed -n 's/^REPO=//p' "$CONF")"; LABEL="$(sed -n 's/^LABEL=//p' "$CONF")"
+TOKEN_FILE="$(sed -n 's/^GH_TOKEN_FILE=//p' "$CONF")"; BUNDLE_DIR="$(sed -n 's/^BUNDLE_DIR=//p' "$CONF")"
+BROKER_SOCKET="$(sed -n 's/^BROKER_SOCKET=//p' "$CONF")"; BROKER_GID="$(sed -n 's/^BROKER_GID=//p' "$CONF")"
+GROUP_ID="$(sed -n 's/^RUNNER_GROUP_ID=//p' "$CONF")"; GROUP_ID="${GROUP_ID:-1}"
+[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$LABEL" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "bad REPO/LABEL in $CONF" >&2; exit 2; }
+
+# One dispatcher per instance at a time (a running job keeps the lock, so ticks just exit).
+exec 9>"/run/stagedirector-dispatch-$INSTANCE.lock"
+flock -n 9 || exit 0
+
+api() {
+  curl -fsS --max-time 15 -H "Authorization: Bearer $(cat "$TOKEN_FILE")" \
+    -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+}
+
+# Queued runs, then their queued jobs that ask for our label. Usually zero runs: one call.
+runs="$(api "https://api.github.com/repos/$REPO/actions/runs?status=queued&per_page=20" | jq -r '.workflow_runs[].id')" || exit 0
+[ -n "$runs" ] || exit 0
+want=0
+for r in $runs; do
+  n="$(api "https://api.github.com/repos/$REPO/actions/runs/$r/jobs?filter=latest" \
+        | jq --arg l "$LABEL" '[.jobs[] | select(.status=="queued" and (.labels | index($l)))] | length')" || continue
+  [ "$n" -gt 0 ] && { want=1; break; }
+done
+[ "$want" = 1 ] || exit 0
+
+name="$INSTANCE-$(date +%s)"
+jit="$(api -X POST "https://api.github.com/repos/$REPO/actions/runners/generate-jitconfig" \
+        -d "$(jq -cn --arg n "$name" --arg l "$LABEL" --argjson g "$GROUP_ID" \
+              '{name: $n, runner_group_id: $g, labels: ["self-hosted", $l], work_folder: "_work"}')" \
+      | jq -r '.encoded_jit_config')"
+[ -n "$jit" ] && [ "$jit" != null ] || { echo "could not get a JIT config for $LABEL" >&2; exit 1; }
+
+logger -t stagedirector-runner "$INSTANCE: job queued for $LABEL, starting $name"
+cd "$BUNDLE_DIR"
+RUNNER_JITCONFIG="$jit" BROKER_SOCKET="$BROKER_SOCKET" BROKER_GID="$BROKER_GID" \
+  nice -n 10 ionice -c3 docker compose -f docker-compose.ephemeral.yml -p "sd-$INSTANCE" \
+  run --rm --no-deps -T runner >/dev/null 2>&1 || logger -t stagedirector-runner "$INSTANCE: runner $name exited non-zero"
+logger -t stagedirector-runner "$INSTANCE: $name done, container removed"

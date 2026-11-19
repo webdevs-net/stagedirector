@@ -1,0 +1,19 @@
+# Template. Install as /etc/systemd/system/sd-broker-INSTANCE@.service (see README).
+# Started once per connection (Accept=yes), exits when the command is done.
+# Runs as the deploy user, which may run docker compose; the runner container never can.
+[Unit]
+Description=Stage Director deploy broker (INSTANCE)
+
+[Service]
+Type=oneshot
+User=stagedirector
+Group=stagedirector
+SupplementaryGroups=docker
+ExecStart=/usr/local/bin/stagedirector-broker INSTANCE
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=40min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only

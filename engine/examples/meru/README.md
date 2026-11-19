@@ -10,17 +10,19 @@ contacts.
 ## How a deploy reaches vultr1
 
 ```
-Stage Director button ─▶ workflow (GitHub-hosted, runner: github)
-   ─▶ joins the tailnet (TS_OAUTH_* environment secrets)
-   ─▶ ssh with the stage's forced-command key (STAGEDIRECTOR_SSH_KEY)
-   ─▶ /usr/local/bin/stagedirector-remote meru <stage>    (fixed by the key, not the caller)
+Stage Director button ─▶ workflow: gate job (GitHub-hosted, checks code-owner approval for live)
+   ─▶ run job queued for label meru-staging / meru-live
+vultr1, timer every 20 s ─▶ "job queued for my label?" ─▶ ephemeral runner container (one job)
+   ─▶ deploy/stagedirector.sh ─▶ /run/stagedirector/meru-<stage>.sock (deploy broker)
+   ─▶ stagedirector-remote meru <stage>    (fixed by the socket, not the caller)
         guard ─▶ git checkout <sha> ─▶ docker compose -p <project> up -d --build ─▶ health ─▶ auto-rollback
 ```
 
-No runner lives on vultr1 and no job gets the Docker socket, so a job can only ask for
-`deploy <sha>`, `rollback <id>` or `status` of the one stage its key belongs to. This follows
-Meru's existing pattern (`.github/workflows/deploy.yml` → Tailscale → `remote-deploy.sh`), which
-stays switched off.
+Nothing reaches into vultr1: no deploy port and no deploy SSH keys, so Tailscale SSH stays on
+for people. No runner exists while nothing is queued, and a job's runner can only ask the broker
+for `deploy <sha>`, `rollback <id>` or `status` of its one stage. Setup: `kits/runner-broker/README.md`.
+
+The GitHub-hosted path below (Tailscale + forced-command SSH) still works with `runner: github`.
 
 ## Keep Tailscale SSH for people, give deploy jobs their own locked port
 

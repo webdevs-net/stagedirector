@@ -1,0 +1,37 @@
+# Stage Director engine: ephemeral runner (one job per container), started by the host loop
+# kits/runner-broker/stagedirector-runner-loop. Not for `docker compose up`.
+#
+#   docker compose -f docker-compose.ephemeral.yml -p sd-meru-staging run --rm \
+#     -e RUNNER_JITCONFIG=... runner
+#
+# No registration volume, no Docker socket, no SSH keys. The only door to the host is the
+# stage's deploy broker socket, which accepts deploy / rollback / status for one stage.
+
+services:
+  runner:
+    build:
+      context: .
+      args:
+        RUNNER_VERSION: ${RUNNER_VERSION:-2.338.2}
+        WRANGLER_VERSION: ${WRANGLER_VERSION:-3.99.0}
+        APT_MIRROR: ${APT_MIRROR:-}
+    image: stagedirector-runner:${RUNNER_VERSION:-2.338.2}
+    environment:
+      RUNNER_JITCONFIG: ${RUNNER_JITCONFIG:-}
+      STAGEDIRECTOR_BROKER_SOCKET: /run/stagedirector/broker.sock
+    volumes:
+      # Only this stage's socket (set by the host loop from /etc/stagedirector/runner-<instance>.env).
+      - ${BROKER_SOCKET:?set BROKER_SOCKET}:/run/stagedirector/broker.sock
+    # The socket's group, so the unprivileged runner user may connect.
+    group_add: ["${BROKER_GID:?set BROKER_GID}"]
+    tmpfs: [/tmp]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: ${RUNNER_MEMORY:-900m}
+    memswap_limit: ${RUNNER_MEMORY:-900m}
+    cpus: ${RUNNER_CPUS:-1.0}
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
