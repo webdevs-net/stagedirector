@@ -231,10 +231,21 @@ export async function getProject(repoSlug: string): Promise<ProjectView | null> 
   return p ? withPins(p) : null;
 }
 
+// Events recorded while the demo runs (e.g. check results). On globalThis: see PINS-style note below.
+const ge = globalThis as unknown as { __sdEvents?: Map<string, ActivityEvent[]> };
+const EVENTS: Map<string, ActivityEvent[]> = (ge.__sdEvents ??= new Map());
+
+export async function recordEvent(repo: string, e: Omit<ActivityEvent, "id">): Promise<ActivityEvent> {
+  const ev = { id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, ...e };
+  EVENTS.set(repo, [ev, ...(EVENTS.get(repo) ?? [])]);
+  return ev;
+}
+
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   const p = await getProject(repoSlug);
   if (!p) return [];
   return [
+    ...(EVENTS.get(p.repo) ?? []),
     { id: "a1", at: ago(9), actor: "auto", action: "push", stageId: "staging", commit: sha(1), result: "passed", note: "Browsers load new styles right away. 2 files changed. Everything checked out." },
     { id: "a2", at: ago(10), actor: "ryan", action: "push", stageId: "staging", commit: sha(3), result: "passed", note: "New login page and sign-up pop-up designs. 1 file changed. Everything checked out." },
     { id: "a3", at: ago(17), actor: "ryan", action: "stop", stageId: "staging", result: "stopped", note: "It would have undone 2 files that were only on staging, so nothing was changed." },

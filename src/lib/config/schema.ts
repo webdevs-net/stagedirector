@@ -42,6 +42,19 @@ export const projectConfigSchema = z
       .strict()
       .optional(),
     liveTodo: z.array(z.string()).optional(),
+    checks: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1),
+            pages: z.array(z.string().startsWith("/")).min(1),
+            expect: z.string().min(1).optional(),
+            forbid: z.array(z.string().min(1)).optional(),
+            stages: z.array(stageId).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     noDowntime: z.boolean().optional(),
   })
   .strict()

@@ -30,3 +30,7 @@ export async function approveForLive(repo: string, commit: string): Promise<{ ok
 export async function pinAction(repo: string, stageId: string, pin: boolean) {
   return data.pinStage(repo, stageId, pin);
 }
+
+export async function runChecksAction(repoSlug: string, stageId: string, when: "before" | "after") {
+  return data.runStageChecks(repoSlug, stageId, when);
+}

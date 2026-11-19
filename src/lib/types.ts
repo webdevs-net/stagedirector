@@ -35,7 +35,23 @@ export interface ProjectConfig {
     snapshot?: string;        // e.g. a Kopia command
   };
   liveTodo?: string[];        // manual steps to repeat after a live push
+  checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
+}
+
+/** One check the dashboard runs against a stage (before approving, and after each run). */
+export interface CheckConfig {
+  name: string;               // "Login page works"
+  pages: string[];            // paths, e.g. ["/login/"]; each must answer 2xx (401 is OK on non-last stages)
+  expect?: string;            // text every page must contain, e.g. "Lost your password"
+  forbid?: string[];          // text no page may contain, e.g. ["Fatal error", "Warning:"]
+  stages?: string[];          // stage ids to run on; default: every stage with a url
+}
+
+export interface CheckResult {
+  name: string;
+  ok: boolean;
+  detail: string;             // plain words, e.g. "/login/ answered 500"
 }
 
 export type Role = "viewer" | "developer" | "code-owner";
