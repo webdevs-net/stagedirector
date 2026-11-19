@@ -54,6 +54,17 @@ export function roleSource(gh: Octokit): RoleSource {
   };
 }
 
+/** Pinned = the git ref refs/stagedirector/pins/<stage> exists (the workflow creates and deletes it). */
+export async function pinRefExists(gh: Octokit, repo: string, stageId: string): Promise<boolean> {
+  try {
+    await gh.rest.git.getRef({ ...splitRepo(repo), ref: `stagedirector/pins/${stageId}` });
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return false;
+    throw e;
+  }
+}
+
 export async function defaultBranchHead(gh: Octokit, repo: string, branch: string): Promise<string> {
   const { data } = await gh.rest.repos.getBranch({ ...splitRepo(repo), branch });
   return data.commit.sha;

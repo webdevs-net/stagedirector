@@ -107,3 +107,24 @@ describe("decide", () => {
     expect(decide({ config: noTools, stageId: "staging", action: "clear-cache", actor: "dev", role: "developer" }).allowed).toBe(false);
   });
 });
+
+describe("pinned stages", () => {
+  const config: ProjectConfig = {
+    version: 1, name: "t", branch: "main",
+    stages: [
+      { id: "local", name: "Local", pushers: "none", trigger: "manual" },
+      { id: "staging", name: "Staging", pushers: "developers", trigger: "auto" },
+      { id: "live", name: "Live", pushers: "code-owners", trigger: "manual" },
+    ],
+  };
+  it("blocks deploy and rollback while pinned, like the workflow", () => {
+    expect(decide({ config, stageId: "staging", action: "deploy", actor: "dev", role: "developer", commit: "a".repeat(40), pinned: true }).allowed).toBe(false);
+    expect(decide({ config, stageId: "staging", action: "rollback", actor: "dev", role: "developer", pinned: true }).allowed).toBe(false);
+    expect(decide({ config, stageId: "staging", action: "unpin", actor: "dev", role: "developer", pinned: true }).allowed).toBe(true);
+  });
+  it("only code owners pin the last stage", () => {
+    expect(decide({ config, stageId: "live", action: "pin", actor: "dev", role: "developer", pinned: false }).allowed).toBe(false);
+    expect(decide({ config, stageId: "live", action: "pin", actor: "ryan", role: "code-owner", pinned: false }).allowed).toBe(true);
+    expect(decide({ config, stageId: "staging", action: "pin", actor: "dev", role: "developer", pinned: false }).allowed).toBe(true);
+  });
+});

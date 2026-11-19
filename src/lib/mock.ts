@@ -209,6 +209,13 @@ function build(): ProjectView[] {
 
 const PROJECTS = build();
 
+// Demo pins live on globalThis: in dev, server actions and pages can load separate copies of this module.
+const gp = globalThis as unknown as { __sdPins?: Set<string> };
+const PINS: Set<string> = (gp.__sdPins ??= new Set());
+function withPins(p: ProjectView): ProjectView {
+  return { ...p, stages: p.stages.map((s) => ({ ...s, pinned: PINS.has(`${p.repo}|${s.stageId}`) })) };
+}
+
 // ---- Public interface (swap for the real data layer later) ----
 
 export async function getViewer(): Promise<Viewer> {
@@ -216,11 +223,12 @@ export async function getViewer(): Promise<Viewer> {
 }
 
 export async function listProjects(): Promise<ProjectView[]> {
-  return PROJECTS;
+  return PROJECTS.map(withPins);
 }
 
 export async function getProject(repoSlug: string): Promise<ProjectView | null> {
-  return PROJECTS.find((p) => repoToSlug(p.repo) === repoSlug) ?? null;
+  const p = PROJECTS.find((x) => repoToSlug(x.repo) === repoSlug);
+  return p ? withPins(p) : null;
 }
 
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
@@ -304,6 +312,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
   if (!p) return { error: "No such project" };
   if ([...RUNS.values()].some((r) => r.repo === repo && tick(r).state === "running")) return { error: "Something is already running here" };
   const stage = p.config.stages.find((s) => s.id === stageId) ?? p.config.stages[1];
+  if (kind !== "clear-cache" && PINS.has(`${repo}|${stage.id}`)) return { error: `${stage.name} is pinned. Unpin it first.` };
   const run: ActiveRun = {
     id: `run-${Date.now()}`,
     repo,
@@ -326,4 +335,16 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
 export async function stopRun(runId: string): Promise<void> {
   const r = RUNS.get(runId);
   if (r && tick(r).state === "running") Object.assign(r, { state: "stopped", finishedAt: Date.now() });
+}
+
+/** Demo pin/unpin: flips the stage's pinned flag (GitHub mode uses the workflow's pin ref). */
+export async function pinStage(repo: string, stageId: string, pin: boolean, role: Role): Promise<{ error: string } | null> {
+  const p = PROJECTS.find((x) => x.repo === repo);
+  const cfg = p?.config.stages.find((s) => s.id === stageId);
+  if (!p || !cfg) return { error: "No such stage" };
+  if (cfg.pushers === "none") return { error: `${cfg.name} is not pushed from here` };
+  if (cfg.pushers === "code-owners" ? role !== "code-owner" : role === "viewer") return { error: `Only a code owner can pin ${cfg.name}` };
+  if (pin) PINS.add(`${repo}|${stageId}`);
+  else PINS.delete(`${repo}|${stageId}`);
+  return null;
 }

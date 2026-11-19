@@ -4,6 +4,7 @@ import { timeAgo } from "@/components/status";
 import { BackLink, Button, ButtonLink, Card, Chevron, Icon, Page } from "@/components/ui";
 import { UpdateStagingButton } from "@/components/UpdateStagingButton";
 import { RunOverlay } from "@/components/runs/RunOverlay";
+import { PinButton } from "@/components/PinButton";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q } = await loadProject(params, searchParams);
@@ -16,6 +17,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const approved = !!p.extras.approval;
   const n = p.waiting.length;
   const liveSync = st(last.id)?.outOfSync ?? [];
+  const middlePinned = !!middle && !!st(middle.id)?.pinned;
+  const livePinned = !!st(last.id)?.pinned;
+  const pinnable = stages.filter((s) => s.pushers !== "none");
+  const mayPin = (s: (typeof stages)[number]) => (s.pushers === "code-owners" ? isOwner : viewer.role !== "viewer");
 
   return (
     <Page>
@@ -63,7 +68,13 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               {middle.url && <ButtonLink href={middle.url} className="mt-2.5 min-h-14 text-teal-ink">Open {middle.name.toLowerCase()}</ButtonLink>}
             </div>
           </div>
-          <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from ${p.config.branch}`} />
+          {middlePinned ? (
+            <p className="flex min-h-[72px] items-center justify-center gap-2 rounded-[22px] bg-amber-soft px-5 text-center text-lg font-extrabold text-[#7a4800]">
+              <Icon name="lock" /> {middle.name} is pinned, so it won&apos;t update. Unpin it below to update again.
+            </p>
+          ) : (
+            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from ${p.config.branch}`} />
+          )}
         </Card>
         </RunOverlay>
       )}
@@ -123,7 +134,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         {isOwner ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <ButtonLink href={`${base}/review${q}`} tone="blue" className="min-h-16 text-[19px]">Review and approve</ButtonLink>
-            {approved ? (
+            {approved && !livePinned ? (
               <ButtonLink href={`${base}/live${q}`} tone="blue" className="min-h-16 text-[19px]">Put on live</ButtonLink>
             ) : (
               <Button disabled aria-describedby="live-lock" className="min-h-16 bg-[#e3e9f0] text-[19px] text-soft">
@@ -138,7 +149,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           </div>
         )}
         <p id="live-lock" className="text-center text-[15px] text-muted">
-          {approved
+          {livePinned
+            ? `${last.name} is pinned. Unpin it below before putting changes live.`
+            : approved
             ? `Approved by ${p.extras.approval?.by}. Ready to put live.`
             : isOwner
               ? `Unlocks once a code owner approves ${n === 1 ? "this change" : `these ${n} changes`}.`
@@ -151,6 +164,27 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         </p>
       </section>
       </RunOverlay>
+
+      <section aria-labelledby="pin-title" className="flex flex-col gap-3 rounded-[28px] bg-white p-5 shadow-[0_4px_18px_rgba(30,43,58,.06)] sm:p-6">
+        <div>
+          <h2 id="pin-title" className="text-xl font-extrabold">Pin a version</h2>
+          <p className="text-[15px] text-muted">A pinned stage keeps the version it has: no updates and no undos until someone unpins it. {last.name} can only be pinned by a code owner.</p>
+        </div>
+        <ul className="flex flex-col gap-2.5">
+          {pinnable.map((s) => {
+            const pinned = !!st(s.id)?.pinned;
+            return (
+              <li key={s.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-[18px] px-4 py-3 ${pinned ? "bg-amber-soft" : "bg-chip"}`}>
+                <span className="flex items-center gap-2.5 font-extrabold">
+                  {pinned && <Icon name="lock" className="text-amber" />}
+                  {s.name} <span className="font-bold text-muted">· {pinned ? "pinned" : "not pinned"}</span>
+                </span>
+                {mayPin(s) ? <PinButton repo={p.repo} stageId={s.id} stageName={s.name} pinned={pinned} /> : <span className="text-sm text-muted">Code owners only</span>}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </Page>
   );
 }

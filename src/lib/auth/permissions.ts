@@ -19,6 +19,8 @@ export interface ActionRequest {
   previousStageCommit?: string | null;
   /** Latest approval recorded for this stage, if any. */
   approval?: Approval | null;
+  /** Is the stage pinned? Matches the workflow's check: a pinned stage takes no deploy or rollback. */
+  pinned?: boolean;
 }
 
 export const isClaude = (actor: string) => actor.startsWith("claude:");
@@ -82,6 +84,12 @@ export function decide(req: ActionRequest): Decision {
       reason: stage.pushers === "code-owners" ? `only a code owner can change ${stage.name}` : "not allowed",
     };
   }
+
+  if (req.pinned && (req.action === "deploy" || req.action === "rollback")) {
+    return { allowed: false, reason: `${stage.name} is pinned. Unpin it first.` };
+  }
+  if (req.action === "pin" && req.pinned) return { allowed: false, reason: `${stage.name} is already pinned` };
+  if (req.action === "unpin" && req.pinned === false) return { allowed: false, reason: `${stage.name} is not pinned` };
 
   // Code-owners stages: a Claude session never starts the run itself.
   if (stage.pushers === "code-owners" && claude) return { allowed: true, recordAs: "request" };
