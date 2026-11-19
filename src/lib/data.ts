@@ -7,6 +7,7 @@ import * as gh from "./github";
 import * as runs from "./github/runs";
 import type { ActivityEvent, CheckResult, ProjectSummary } from "./types";
 import { checksFor, runChecks, summarizeResults } from "./checks";
+import { applyFilter, type ActivityFilter, type ActivityRow } from "./activity";
 
 export type { Viewer, ProjectExtras, ProjectView, RunKind, ActiveRun } from "./mock";
 export { RUN_STEPS, repoToSlug } from "./shared";
@@ -161,4 +162,16 @@ export async function runStageChecks(repoSlug: string, stageId: string, when: "b
   };
   await (live() ? gh.recordEvent(p.repo, event) : mock.recordEvent(p.repo, event)).catch(() => undefined);
   return { results };
+}
+
+/** Every project's activity, newest first, filtered. `repo` in the filter limits it to one project. */
+export async function getAllActivity(filter: ActivityFilter = {}): Promise<ActivityRow[]> {
+  const projects = (await listProjects()).filter((p) => !filter.repo || p.repo === filter.repo);
+  const lists = await Promise.all(
+    projects.map(async (p) => {
+      const events = live() ? await gh.getActivity(p.repo, 100).catch(() => []) : await mock.getActivity(p.repo.replace("/", "~"));
+      return events.map((e) => ({ ...e, repo: p.repo, project: p.config.name }));
+    }),
+  );
+  return applyFilter(lists.flat(), filter).sort((a, b) => b.at.localeCompare(a.at));
 }
