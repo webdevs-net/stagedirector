@@ -5,6 +5,7 @@ group: Maria's Place
 kind: WordPress · Hostinger
 branch: main
 noDowntime: false
+gateRunner: github          # or self-hosted: "Check rules" runs on a runner labelled sd-gate (no GitHub-hosted minutes)
 stages:
   - id: local
     name: Local

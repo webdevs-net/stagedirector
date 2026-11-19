@@ -56,6 +56,7 @@ export const projectConfigSchema = z
       )
       .optional(),
     noDowntime: z.boolean().optional(),
+    gateRunner: z.enum(["github", "self-hosted"]).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

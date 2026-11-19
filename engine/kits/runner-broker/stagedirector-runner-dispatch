@@ -16,8 +16,8 @@
 #   GH_TOKEN_FILE=/etc/stagedirector/runner-<instance>.token   fine-grained PAT, this repo only,
 #                                                              Administration: write, Actions: read
 #   BUNDLE_DIR=/opt/stagedirector/compose                     engine/compose, image pre-built
-#   BROKER_SOCKET=/run/stagedirector/<instance>.sock
-#   BROKER_GID=<gid of group sd-<instance>>
+#   BROKER_SOCKET=/run/stagedirector/<instance>.sock          leave empty for the sd-gate instance
+#   BROKER_GID=<gid of group sd-<instance>>                   (no deploy door: it only checks rules)
 #   RUNNER_GROUP_ID=1                                         runner group (Default = 1)
 # The token never enters the container; only the single-use JIT config does.
 
@@ -30,6 +30,8 @@ REPO="$(sed -n 's/^REPO=//p' "$CONF")"; LABEL="$(sed -n 's/^LABEL=//p' "$CONF")"
 TOKEN_FILE="$(sed -n 's/^GH_TOKEN_FILE=//p' "$CONF")"; BUNDLE_DIR="$(sed -n 's/^BUNDLE_DIR=//p' "$CONF")"
 BROKER_SOCKET="$(sed -n 's/^BROKER_SOCKET=//p' "$CONF")"; BROKER_GID="$(sed -n 's/^BROKER_GID=//p' "$CONF")"
 GROUP_ID="$(sed -n 's/^RUNNER_GROUP_ID=//p' "$CONF")"; GROUP_ID="${GROUP_ID:-1}"
+# A runner without a deploy door (sd-gate): mount /dev/null where the socket would be.
+[ -n "$BROKER_SOCKET" ] || { BROKER_SOCKET=/dev/null; BROKER_GID=65534; }
 [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$LABEL" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "bad REPO/LABEL in $CONF" >&2; exit 2; }
 
 # One dispatcher per instance at a time (a running job keeps the lock, so ticks just exit).
