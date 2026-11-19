@@ -1,0 +1,38 @@
+# Example stagedirector.yml for Maria's Place (lives at the root of that repo).
+version: 1
+name: Maria's Place
+group: Maria's Place
+kind: WordPress · Hostinger
+branch: main
+noDowntime: false
+stages:
+  - id: local
+    name: Local
+    url: http://localhost:58410/
+    pushers: none
+    trigger: manual
+  - id: staging
+    name: Staging
+    url: https://staging.mariasplace.com/
+    pushers: developers
+    trigger: auto
+    deploy: scripts/deploy.sh staging
+    rollback: scripts/deploy.sh rollback staging {backup}
+    status: scripts/deploy.sh status --json
+    smokeTest: [/, /login/, /my-account/, /contact/]
+    runner: ovh1
+  - id: live
+    name: Live site
+    url: https://mariasplace.com/
+    pushers: code-owners
+    trigger: manual
+    deploy: scripts/deploy.sh live
+    rollback: scripts/deploy.sh rollback live {backup}
+    status: scripts/deploy.sh status --json
+    smokeTest: [/, /login/, /my-account/, /contact/]
+    runner: ovh1
+tools:
+  clearCache: scripts/clear-cache.sh
+  syncCheck: scripts/deploy.sh drift
+liveTodo:
+  - Repeat any Divi page edits made on staging
