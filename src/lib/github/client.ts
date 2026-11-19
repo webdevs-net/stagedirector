@@ -23,8 +23,11 @@ export function githubConfigured(): boolean {
 export function getOctokit(): Octokit | null {
   if (cached !== undefined) return cached;
   const e = process.env;
+  // GITHUB_API_URL: GitHub Enterprise, or the fake GitHub used by the tests (src/lib/github/testing/fake-github.ts).
+  const baseUrl = e.GITHUB_API_URL || undefined;
   if (e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) {
     cached = new Octokit({
+      baseUrl,
       log,
       authStrategy: createAppAuth,
       auth: {
@@ -34,7 +37,7 @@ export function getOctokit(): Octokit | null {
       },
     });
   } else if (e.GITHUB_TOKEN) {
-    cached = new Octokit({ log, auth: e.GITHUB_TOKEN });
+    cached = new Octokit({ log, auth: e.GITHUB_TOKEN, baseUrl });
   } else {
     cached = null;
   }
@@ -69,3 +72,20 @@ export function splitRepo(repo: string): { owner: string; repo: string } {
 
 export const WORKFLOW_FILE = "stagedirector.yml";
 export const CONFIG_FILE = "stagedirector.yml";
+
+/** Tests only: forget the cached client and identity so new env vars take effect. */
+export function resetGithubClient() {
+  cached = undefined;
+  identity = undefined;
+}
+
+/** Octokit acting as a person (their own OAuth token), for things GitHub must attribute to them. */
+export function personOctokit(token: string): Octokit {
+  return new Octokit({ log, auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
+}
+
+/** True when the dashboard's own identity is a GitHub App (a bot), not a person's token. */
+export function dashboardIsApp(): boolean {
+  const e = process.env;
+  return Boolean(e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID);
+}

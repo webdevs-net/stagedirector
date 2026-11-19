@@ -34,42 +34,34 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       </div>
 
       <form method="get" aria-label="Filter the record" className="grid grid-cols-1 gap-2.5 rounded-[22px] bg-white p-4 shadow-[0_4px_18px_rgba(30,43,58,.06)] sm:grid-cols-2 lg:grid-cols-4">
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">Project
-          <select name="repo" defaultValue={f.repo ?? ""} className={field}>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-repo">Project</label>          <select id="f-repo" name="repo" defaultValue={f.repo ?? ""} className={field}>
             <option value="">All projects</option>
             {projects.map((p) => <option key={p.repo} value={p.repo}>{p.config.name}</option>)}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">Stage
-          <select name="stage" defaultValue={f.stage ?? ""} className={field}>
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-stage">Stage</label>          <select id="f-stage" name="stage" defaultValue={f.stage ?? ""} className={field}>
             <option value="">Any stage</option>
             {stages.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">What happened
-          <select name="action" defaultValue={f.action ?? ""} className={field}>
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-action">What happened</label>          <select id="f-action" name="action" defaultValue={f.action ?? ""} className={field}>
             <option value="">Anything</option>
             {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">Result
-          <select name="result" defaultValue={f.result ?? ""} className={field}>
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-result">Result</label>          <select id="f-result" name="result" defaultValue={f.result ?? ""} className={field}>
             <option value="">Any result</option>
             {RESULTS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">Person
-          <input name="actor" defaultValue={f.actor ?? ""} placeholder="login, claude or auto" className={field} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">From
-          <input type="date" name="from" defaultValue={f.from ?? ""} className={field} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">To
-          <input type="date" name="to" defaultValue={f.to ?? ""} className={field} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-bold text-muted">Words in the note
-          <input name="q" defaultValue={f.q ?? ""} className={field} />
-        </label>
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-actor">Person</label>          <input id="f-actor" name="actor" defaultValue={f.actor ?? ""} placeholder="login, claude or auto" className={field} />
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-from">From</label>          <input type="date" id="f-from" name="from" defaultValue={f.from ?? ""} className={field} />
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-to">To</label>          <input type="date" id="f-to" name="to" defaultValue={f.to ?? ""} className={field} />
+        </div>
+        <div className="flex flex-col gap-1 text-sm font-bold text-muted"><label htmlFor="f-q">Words in the note</label>          <input id="f-q" name="q" defaultValue={f.q ?? ""} className={field} />
+        </div>
         <div className="flex gap-2.5 sm:col-span-2 lg:col-span-4">
           <button type="submit" className="min-h-[52px] flex-1 rounded-2xl bg-ink px-5 font-extrabold text-white">Show</button>
           <Link href="/activity" className="flex min-h-[52px] items-center rounded-2xl bg-chip px-5 font-extrabold">Clear</Link>

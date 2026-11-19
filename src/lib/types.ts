@@ -69,7 +69,8 @@ export interface StageStatus {
 }
 
 export interface Change {
-  pr: number;
+  pr: number;                 // 0 for a commit made straight to the branch (no PR)
+  commit?: string;            // set for such a commit
   title: string;
   summary: string;            // plain-English summary
   url: string;

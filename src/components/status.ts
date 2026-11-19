@@ -36,8 +36,8 @@ export function barColors(p: ProjectView): string[] {
 
 export function timeAgo(iso: string | null): string {
   if (!iso) return "never";
-  const now = Date.parse("2026-11-18T15:22:00-08:00");
-  const min = Math.round((now - Date.parse(iso)) / 60000);
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  if (min < 1) return "just now";
   if (min < 60) return `${min} min ago`;
   const h = Math.round(min / 60);
   if (h < 24) return `${h} h ago`;

@@ -91,10 +91,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         </h2>
         {n === 0 && <p className="rounded-[22px] bg-white p-6 text-muted">Nothing waiting. {last.name} matches {middle?.name.toLowerCase() ?? "main"}.</p>}
         {p.waiting.map((c, i) => (
-          <details key={c.pr} open={i === 0} className="rounded-[22px] bg-white shadow-[0_4px_18px_rgba(30,43,58,.06)]">
+          <details key={c.pr || c.commit} open={i === 0} className="rounded-[22px] bg-white shadow-[0_4px_18px_rgba(30,43,58,.06)]">
             <summary className="flex min-h-[72px] items-center gap-3.5 px-5">
               <span className="flex-1 text-lg font-extrabold">{c.title}</span>
-              <span className="text-sm font-bold text-muted">PR #{c.pr}</span>
+              <span className="text-sm font-bold text-muted">{c.pr ? `PR #${c.pr}` : `commit ${c.commit?.slice(0, 7)}`}</span>
               <Chevron />
             </summary>
             <div className="flex flex-col gap-3.5 px-5 pb-5">

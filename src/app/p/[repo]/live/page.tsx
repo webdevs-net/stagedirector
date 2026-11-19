@@ -2,13 +2,15 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { Chevron, Icon } from "@/components/ui";
+import { dataIsLive } from "@/lib/data";
 
 export default async function PutLivePage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
   const last = p.config.stages[p.config.stages.length - 1];
   const host = last.url ? new URL(last.url).host : last.name;
   const n = p.waiting.length;
-  const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" ? { by: viewer.name, at: "just now" } : null);
+  // In demo mode ?approved=1 stands in for the stored approval; with GitHub only a real approval counts.
+  const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" && !(await dataIsLive()) ? { by: viewer.name, at: "just now" } : null);
   const sync = p.stages[p.stages.length - 1]?.outOfSync ?? [];
   const canPush = viewer.role === "code-owner" && !!approval;
 
@@ -23,7 +25,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
 
         <ul className="flex flex-col gap-2 rounded-[20px] bg-bg px-5 py-4 text-[17px]">
           {p.waiting.map((c) => (
-            <li key={c.pr} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
+            <li key={c.pr || c.commit} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
           ))}
         </ul>
 

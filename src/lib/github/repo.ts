@@ -140,16 +140,32 @@ function plainSummary(body: string | null | undefined, title: string): string {
   return (line ?? title).slice(0, 240);
 }
 
-/** Merged PRs in `from..to` (e.g. live commit .. staging commit). */
+/**
+ * What is in `to` but not yet in `from` (e.g. staging vs live): merged PRs, plus
+ * commits made straight to the branch with no PR. `from` null = the stage was
+ * never pushed: the newest commits up to `to` (at most 20).
+ */
 export async function changesBetween(gh: Octokit, repo: string, from: string | null, to: string | null): Promise<Change[]> {
   if (!to || from === to) return [];
-  if (!from) return [];
-  const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
+  let commits: { sha: string; commit: { message: string }; html_url: string }[];
+  if (from) {
+    const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
+    commits = data.commits.slice(-50);
+  } else {
+    const { data } = await gh.rest.repos.listCommits({ ...splitRepo(repo), sha: to, per_page: 20 });
+    commits = data.slice().reverse();
+  }
   const seen = new Map<number, Change>();
+  const direct: Change[] = [];
   const bodies = new Map<number, { body: string | null; sha: string }>();
-  for (const c of data.commits.slice(-50)) {
+  for (const c of commits) {
     const { data: prs } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: c.sha });
-    for (const pr of prs) {
+    const merged = prs.filter((pr) => pr.merged_at);
+    if (merged.length === 0 && !/^Merge (pull request|branch)/.test(c.commit.message)) {
+      const [title, ...rest] = c.commit.message.split("\n");
+      direct.push({ pr: 0, commit: c.sha, title: title.slice(0, 200), summary: plainSummary(rest.join("\n"), title), url: c.html_url });
+    }
+    for (const pr of merged) {
       if (!pr.merged_at || seen.has(pr.number)) continue;
       const pages = (pr.body ?? "").match(/(?<=\bpages?:\s*)(\/[^\s,]*(?:[\s,]+\/[^\s,]*)*)/i)?.[0].split(/[\s,]+/);
       seen.set(pr.number, { pr: pr.number, title: pr.title, summary: plainSummary(pr.body, pr.title), url: pr.html_url, ...(pages ? { pages } : {}) });
@@ -166,7 +182,7 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
       }),
     );
   }
-  return [...seen.values()].sort((a, b) => a.pr - b.pr);
+  return [...[...seen.values()].sort((a, b) => a.pr - b.pr), ...direct];
 }
 
 export interface RunInfo {
@@ -185,6 +201,12 @@ const TITLE = /^stagedirector (\S+) (\S+) (\S+) by (\S+)/;
 export function parseRunTitle(title: string | null | undefined) {
   const m = TITLE.exec(title ?? "");
   return m ? { action: m[1], stageId: m[2], commit: m[3], by: m[4] } : null;
+}
+
+/** A push run's title says "auto" for the stage: that is the first stage with trigger: auto. */
+export function resolveRunStage(config: ProjectConfig, stageId: string | null): string | null {
+  if (stageId !== "auto") return stageId;
+  return config.stages.find((s) => s.trigger === "auto" && s.pushers !== "none")?.id ?? null;
 }
 
 export function runState(status: string | null, conclusion: string | null): RunState {

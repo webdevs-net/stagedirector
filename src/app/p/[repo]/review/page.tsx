@@ -38,7 +38,7 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
           <p className="text-soft">{c.summary}</p>
           <nav aria-label="Changes" className="flex flex-wrap gap-2">
             {p.waiting.map((w, i) => (
-              <ButtonLink key={w.pr} href={`${base}/review?i=${i}${q ? "&as=developer" : ""}`} tone={i === idx ? "blue" : "plain"} className="rounded-full">
+              <ButtonLink key={w.pr || w.commit} href={`${base}/review?i=${i}${q ? "&as=developer" : ""}`} tone={i === idx ? "blue" : "plain"} className="rounded-full">
                 {i + 1}
               </ButtonLink>
             ))}

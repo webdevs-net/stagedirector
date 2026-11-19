@@ -22,9 +22,9 @@ export async function runLogAction(repoSlug: string, stageId: string) {
   return data.getRunLog(repoSlug, stageId);
 }
 
-export async function approveForLive(repo: string, commit: string): Promise<{ ok: boolean }> {
-  console.log("[stub] approve", repo, commit);
-  return { ok: true };
+export async function approveForLive(repo: string, commit: string): Promise<{ ok: boolean; error?: string }> {
+  const error = await data.approve(repo, commit);
+  return error ? { ok: false, error } : { ok: true };
 }
 
 export async function pinAction(repo: string, stageId: string, pin: boolean) {
