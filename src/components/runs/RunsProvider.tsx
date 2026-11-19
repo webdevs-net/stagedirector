@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { listRunsAction, startRunAction, stopRunAction } from "@/app/actions";
 import type { ActiveRun, RunKind } from "@/lib/data";
+import { announceChange } from "@/components/LiveRefresh";
 
 interface RunsCtx {
   runs: ActiveRun[];
@@ -29,6 +30,11 @@ export function RunsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const anyRunning = runs.some((r) => r.state === "running");
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !anyRunning) announceChange(); // a run just ended: re-read stages
+    wasRunning.current = anyRunning;
+  }, [anyRunning]);
   useEffect(() => {
     refresh();
     const t = setInterval(refresh, anyRunning ? 1000 : 5000);
@@ -39,6 +45,7 @@ export function RunsProvider({ children }: { children: ReactNode }) {
     async (repo: string, stageId: string, kind: RunKind) => {
       const r = await startRunAction(repo, stageId, kind);
       await refresh();
+      announceChange();
       return "error" in r ? r.error : null;
     },
     [refresh],
@@ -48,6 +55,7 @@ export function RunsProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       const err = await stopRunAction(id);
       await refresh();
+      announceChange();
       return err;
     },
     [refresh],

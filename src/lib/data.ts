@@ -84,6 +84,10 @@ export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   return gh.getActivity(slugToRepo(repoSlug));
 }
 
+export function isDemo(): boolean {
+  return !live();
+}
+
 /**
  * The technical log for the Updating screen: the newest run on that stage
  * (GitHub mode), or the built-in sample log.

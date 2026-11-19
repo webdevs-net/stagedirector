@@ -34,7 +34,7 @@ export interface ProjectExtras {
 
 export type ProjectView = ProjectSummary & { extras: ProjectExtras };
 
-const NOW = Date.parse("2026-11-18T15:22:00-08:00");
+const NOW = Date.now();
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 const sha = (n: number) => (n * 2654435761).toString(16).padStart(8, "0").repeat(5).slice(0, 40);
 
@@ -154,7 +154,11 @@ function build(): ProjectView[] {
       config: MARIAS,
       stages: [
         { stageId: "local", commit: sha(1), deployedAt: null, deployedBy: null, behindBy: 0, outOfSync: [], pinned: false },
-        { stageId: "staging", commit: sha(1), deployedAt: ago(9), deployedBy: "auto", behindBy: 0, outOfSync: [], pinned: false },
+        {
+          stageId: "staging", commit: sha(1), deployedAt: ago(9), deployedBy: "auto", behindBy: 0, outOfSync: [], pinned: false,
+          // Demo of a deploy made from a terminal (scripts/deploy.sh staging) on a feature branch.
+          running: { commit: sha(7), at: ago(4), by: "ryan", source: "terminal", ref: "claude/divi-removal-strategy-4f5a0e", behindBy: 0, onBranch: false },
+        },
         { stageId: "live", commit: sha(2), deployedAt: ago(60 * 26), deployedBy: "ryan", behindBy: 4, outOfSync: ["wp-content/themes/MariasPlace/content-page.php"], pinned: false },
       ],
       waiting: MARIAS_CHANGES,

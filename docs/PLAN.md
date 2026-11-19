@@ -11,3 +11,7 @@
   direct commits also show as waiting. Found testing against a real repo.
 
 - 2026-11-19 (engine): `ActivityEvent.action` and `wants` gain `"snapshot"` (Save a backup → workflow action `snapshot` → `tools.snapshot`).
+- 2026-11-19 — `StageStatus.running?: RunningCommit | null` and `RunningCommit` added (data layer).
+  Set when a stage runs a commit Stage Director did not deploy (from `observed-<stage>`
+  deployments, see engine/contract.md "Outside deploys"). Display only; permission checks
+  and the live gate keep using `commit`.

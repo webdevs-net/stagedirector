@@ -1,6 +1,6 @@
 import { ProjectBrowser } from "@/components/ProjectBrowser";
 import { Button, ButtonLink, Icon, Page } from "@/components/ui";
-import { getViewer, listProjects } from "@/lib/data";
+import { getViewer, isDemo, listProjects } from "@/lib/data";
 
 export default async function HomePage() {
   const [viewer, projects] = await Promise.all([getViewer(), listProjects()]);
@@ -25,8 +25,16 @@ export default async function HomePage() {
       <details>
         <summary className="flex min-h-12 items-center justify-center font-bold text-muted">Engines and servers</summary>
         <div className="flex flex-col gap-1.5 rounded-[20px] bg-white px-5 py-4 text-[15px] text-soft">
-          <div>ovh1 runner · running · serves {projects.length} projects</div>
-          <div>Hostinger · reached through ovh1 over SSH</div>
+          {isDemo() ? (
+            <>
+              <div>ovh1 runner · running · serves {projects.length} projects (demo)</div>
+              <div>Hostinger · reached through ovh1 over SSH (demo)</div>
+            </>
+          ) : (
+            [...new Set(projects.flatMap((p) => p.config.stages.map((s) => s.runner).filter(Boolean)))].map((r) => (
+              <div key={r}>Runner “{r}” · used by {projects.filter((p) => p.config.stages.some((s) => s.runner === r)).map((p) => p.config.name).join(", ")}</div>
+            ))
+          )}
         </div>
       </details>
     </Page>

@@ -1,5 +1,5 @@
 import type { Octokit } from "@octokit/rest";
-import type { Change, ProjectConfig, RunState, StageStatus } from "@/lib/types";
+import type { Change, ProjectConfig, RunningCommit, RunState, StageStatus } from "@/lib/types";
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
@@ -96,6 +96,40 @@ async function latestSuccessfulDeployment(gh: Octokit, repo: string, stageId: st
   return null;
 }
 
+/** GitHub environment for outside-deploy records. Never equal to a stage id, so the live gate ignores it. */
+export const observedEnvironment = (stageId: string) => `observed-${stageId}`;
+
+export interface Observed {
+  commit: string;
+  at: string;
+  by: string | null;
+  source: RunningCommit["source"];
+  ref?: string;
+}
+
+/** Newest outside-deploy record for a stage (written by engine/kits/report-deploy.sh or the observe workflow). */
+export async function latestObserved(gh: Octokit, repo: string, stageId: string): Promise<Observed | null> {
+  const { data } = await gh.rest.repos.listDeployments({ ...splitRepo(repo), environment: observedEnvironment(stageId), per_page: 1 });
+  const d = data[0];
+  if (!d) return null;
+  const payload = (d.payload ?? {}) as { actor?: string; source?: string; ref?: string };
+  return {
+    commit: d.sha,
+    at: d.created_at,
+    by: payload.actor ?? d.creator?.login ?? null,
+    source: payload.source === "version-check" ? "version-check" : "terminal",
+    ref: payload.ref ?? (d.ref !== d.sha ? d.ref : undefined),
+  };
+}
+
+/** The outside record wins when it is newer than Stage Director's own deploy and names a different commit. */
+export function pickRunning(own: { commit: string; at: string } | null, seen: Observed | null): Observed | null {
+  if (!seen) return null;
+  if (own && seen.commit === own.commit) return null;
+  if (own && Date.parse(seen.at) <= Date.parse(own.at)) return null;
+  return seen;
+}
+
 async function behind(gh: Octokit, repo: string, base: string | null, head: string | null): Promise<number> {
   if (!base || !head || base === head) return 0;
   const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${base}...${head}`, per_page: 1 });
@@ -110,12 +144,22 @@ export async function stageStatuses(
   pinned: (stageId: string) => Promise<boolean>,
 ): Promise<StageStatus[]> {
   const head = await defaultBranchHead(gh, repo, config.branch).catch(() => null);
-  const deployed = await Promise.all(
-    config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id))),
-  );
+  const [deployed, observed] = await Promise.all([
+    Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id)))),
+    Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestObserved(gh, repo, s.id).catch(() => null)))),
+  ]);
   return Promise.all(
     config.stages.map(async (s, i) => {
       const d = deployed[i];
+      const seen = pickRunning(d, observed[i]);
+      let running: RunningCommit | null = null;
+      if (seen && head) {
+        const cmp = await gh.rest.repos
+          .compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${seen.commit}...${head}`, per_page: 1 })
+          .then((r) => r.data)
+          .catch(() => null);
+        running = { ...seen, behindBy: cmp?.ahead_by ?? 0, onBranch: cmp ? cmp.behind_by === 0 : false };
+      }
       // Compare with the previous stage that has a commit, or the branch head.
       let prev: string | null = head;
       for (let j = i - 1; j >= 0; j--) if (deployed[j]) { prev = deployed[j]!.commit; break; }
@@ -127,6 +171,7 @@ export async function stageStatuses(
         behindBy: d ? await behind(gh, repo, d.commit, prev).catch(() => 0) : 0,
         outOfSync: d?.outOfSync ?? [],
         pinned: s.pushers === "none" ? false : await pinned(s.id),
+        running,
       };
     }),
   );

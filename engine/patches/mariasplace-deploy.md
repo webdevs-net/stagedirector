@@ -45,3 +45,14 @@ Runner needs `jq` (installed by `setup-ovh1.sh`).
 The script calls `ssh hostinger`. `setup-ovh1.sh hostkey mariasplace hostinger <user>@<host> <port>`
 writes that alias for `stagedirector-runner` (copy user/host/port from your own
 `~/.ssh/config` entry for `hostinger`). `wp`, `rsync`, `php` must exist on Hostinger, as today.
+
+## Outside deploys (2026-11-19)
+
+So Stage Director shows what staging/live really run after `scripts/deploy.sh staging`
+from a terminal, add to the end of a successful deploy in `scripts/deploy.sh`
+(see engine/contract.md "Outside deploys"):
+
+    git rev-parse HEAD > "$REMOTE_WEBROOT/.stagedirector-version"   # via the existing ssh/rsync step
+    engine/kits/report-deploy.sh "$STAGE" || true                   # copy the kit into scripts/
+
+Not applied to the Maria's Place repo yet; needs the owner's OK (staging first).

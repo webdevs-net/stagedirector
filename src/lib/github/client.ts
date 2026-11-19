@@ -1,6 +1,18 @@
 import "server-only";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
+import { EtagCache } from "./etag";
+
+/** Shared across requests so polls reuse ETags (304s are free against the rate limit). */
+export const etagCache = new EtagCache();
+
+function withEtags(gh: Octokit): Octokit {
+  gh.hook.wrap("request", (request, options) => {
+    const { method, url } = gh.request.endpoint(options as never) as { method: string; url: string };
+    return etagCache.wrap(request as never, options as never, `${method} ${url}`) as never;
+  });
+  return gh;
+}
 
 /**
  * Server-side Octokit for the dashboard's own GitHub identity.
@@ -26,7 +38,7 @@ export function getOctokit(): Octokit | null {
   // GITHUB_API_URL: GitHub Enterprise, or the fake GitHub used by the tests (src/lib/github/testing/fake-github.ts).
   const baseUrl = e.GITHUB_API_URL || undefined;
   if (e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) {
-    cached = new Octokit({
+    cached = withEtags(new Octokit({
       baseUrl,
       log,
       authStrategy: createAppAuth,
@@ -35,9 +47,9 @@ export function getOctokit(): Octokit | null {
         privateKey: e.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n"),
         installationId: Number(e.GITHUB_APP_INSTALLATION_ID),
       },
-    });
+    }));
   } else if (e.GITHUB_TOKEN) {
-    cached = new Octokit({ log, auth: e.GITHUB_TOKEN, baseUrl });
+    cached = withEtags(new Octokit({ log, auth: e.GITHUB_TOKEN, baseUrl }));
   } else {
     cached = null;
   }
