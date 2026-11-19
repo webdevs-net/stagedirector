@@ -131,6 +131,28 @@ STAGEDIRECTOR_DEV_LOGIN=your-login npm run dev
 
 Without GitHub credentials it runs on **sample data** (what the screenshots show), and every button can be tried. To use real projects, copy `.env.example` to `.env.local` and fill in the GitHub OAuth app, a GitHub App or token, and `STAGEDIRECTOR_REPOS`.
 
+## Tests
+
+```bash
+npm test
+```
+
+Unit tests, plus **GitHub mode end to end against a fake GitHub API**
+(`src/lib/github/testing/fake-github.ts`): reading stages, starting and following runs, Stop,
+pins, approvals, Claude requests, forged log records. The fake also plays the engine's workflow.
+
+```bash
+npx playwright install chromium
+```
+
+```bash
+npm run e2e
+```
+
+Browser tests (`e2e/`): every screen and button in demo mode, phone-width layout, and GitHub mode
+(a second dev server pointed at the fake GitHub, signed in as a code owner). CI runs all of it on
+every pull request (`.github/workflows/ci.yml`); no secrets needed.
+
 ## Run it on ovh1 (Docker, Tailscale only)
 
 Written for the owner to run by hand; nothing here has been run against the server.

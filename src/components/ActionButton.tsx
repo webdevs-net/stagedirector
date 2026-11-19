@@ -23,7 +23,10 @@ export function ActionButton(props: Props) {
 
   const run = async () => {
     setErr(null);
-    if (props.act === "approve") await approveForLive(repo, props.arg);
+    if (props.act === "approve") {
+      const r = await approveForLive(repo, props.arg);
+      if (!r.ok) return setErr(r.error ?? "Could not approve");
+    }
     if (props.act === "run") {
       const e = await start(repo, props.stageId, props.kind);
       if (e) return setErr(e);

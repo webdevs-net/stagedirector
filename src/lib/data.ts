@@ -73,7 +73,10 @@ export async function getProject(repoSlug: string): Promise<mock.ProjectView | n
   if (!live()) return mock.getProject(repoSlug);
   const login = await gh.currentLogin();
   const p = await gh.getProject(slugToRepo(repoSlug), login);
-  return p ? withRequests(toView(p), login) : null;
+  if (!p) return null;
+  const v = await withRequests(toView(p), login);
+  const a = await gh.currentApproval(p.repo).catch(() => null);
+  return a ? { ...v, extras: { ...v.extras, approval: { by: a.by, at: new Date(a.at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) } } } : v;
 }
 
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
@@ -197,4 +200,22 @@ export async function answerRequest(repo: string, requestId: string, ok: boolean
   if (!login) return "Sign in with GitHub first";
   const r = await gh.answerRequest(login, repo, requestId, ok);
   return r.ok ? null : r.error;
+}
+
+/** A code owner approves the exact commit now on the stage before the last one. */
+export async function approve(repo: string, commit: string): Promise<string | null> {
+  if (!live()) return null; // demo: the review screen shows the approval without storing it
+  const login = await gh.currentLogin();
+  if (!login) return "Sign in with GitHub first";
+  const p = await gh.getProject(repo, login);
+  const last = p?.config.stages.at(-1);
+  if (!p || !last) return "No such project";
+  const r = await gh.performAction(login, { repo, stageId: last.id, action: "approve", commit });
+  if (!r.ok) return r.error;
+  return r.recordedAs === "request" ? "Saved as a request; a code owner needs to OK it" : null;
+}
+
+/** True when the dashboard reads real GitHub data (credentials set). */
+export async function dataIsLive(): Promise<boolean> {
+  return live();
 }

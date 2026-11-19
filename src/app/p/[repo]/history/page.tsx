@@ -17,7 +17,7 @@ function who(actor: string) {
 
 function dayOf(iso: string) {
   const d = new Date(iso);
-  const today = new Date("2026-11-18T15:22:00-08:00");
+  const today = new Date();
   const diff = Math.floor((today.setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
   if (diff <= 0) return "TODAY";
   if (diff === 1) return "YESTERDAY";

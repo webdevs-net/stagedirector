@@ -4,7 +4,7 @@ import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, PushReques
 import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
 import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
 import { configuredRepos, getOctokit, selfLogin, splitRepo } from "./client";
-import { changesBetween, readConfig, recentRuns, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { changesBetween, defaultBranchHead, readConfig, recentRuns, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 
@@ -163,6 +163,11 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   const role = await getRoleFor(input.repo, person);
   const approval: Approval | null = await store.latestApproval(input.repo, input.stageId);
 
+  // "Update staging" sends no commit: take what is on the stage before (or the branch head when that is local).
+  if (input.action === "deploy" && !input.commit) {
+    input = { ...input, commit: prev?.commit ?? (gh ? (await defaultBranchHead(gh, input.repo, config.branch).catch(() => null)) ?? undefined : undefined) };
+  }
+
   if (input.commit && !/^[0-9a-f]{40}$/.test(input.commit)) {
     return { ok: false, status: 400, error: "commit must be a full 40-character SHA" };
   }
@@ -269,4 +274,14 @@ export async function answerRequest(actor: string, repo: string, requestId: stri
     if (!a.ok) return a;
   }
   return performAction(actor, { repo, stageId: req.stageId, action: req.wants, commit: req.commit, answers: req.id, note: `asked by ${req.actor}` });
+}
+
+/** The valid approval for putting what is on the stage before onto the last stage, if any. */
+export async function currentApproval(repo: string): Promise<Approval | null> {
+  const project = await getProject(repo);
+  if (!project || project.stages.length < 2) return null;
+  const last = project.stages[project.stages.length - 1];
+  const prev = project.stages[project.stages.length - 2];
+  const a = await storeFor(getOctokit()).latestApproval(repo, last.stageId);
+  return approvalValid(a, last.stageId, prev.commit ?? undefined, prev.commit) ? a : null;
 }
