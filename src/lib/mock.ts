@@ -31,7 +31,7 @@ export interface ProjectExtras {
 
 export type ProjectView = ProjectSummary & { extras: ProjectExtras };
 
-const NOW = Date.parse("2026-11-18T15:22:00-08:00");
+const NOW = Date.now();
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 const sha = (n: number) => (n * 2654435761).toString(16).padStart(8, "0").repeat(5).slice(0, 40);
 

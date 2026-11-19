@@ -2,13 +2,14 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { Chevron, Icon } from "@/components/ui";
+import { isDemo } from "@/lib/data";
 
 export default async function PutLivePage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
   const last = p.config.stages[p.config.stages.length - 1];
   const host = last.url ? new URL(last.url).host : last.name;
   const n = p.waiting.length;
-  const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" ? { by: viewer.name, at: "just now" } : null);
+  const approval = p.extras.approval ?? (isDemo() && sp.approved === "1" && viewer.role === "code-owner" ? { by: viewer.name, at: "just now" } : null);
   const sync = p.stages[p.stages.length - 1]?.outOfSync ?? [];
   const canPush = viewer.role === "code-owner" && !!approval;
 

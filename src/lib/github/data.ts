@@ -219,6 +219,46 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   return { ok: true, recordedAs: "action", event };
 }
 
+export interface LiveRun {
+  id: number; repo: string; projectName: string; stageId: string; stageName: string; stageUrl?: string;
+  action: string | null; state: "queued" | "running" | "passed" | "failed" | "stopped"; startedAt: string; url: string;
+}
+
+/** Stage Director workflow runs that are going, or ended in the last minute, across configured repos. */
+export async function getLiveRuns(): Promise<LiveRun[]> {
+  const gh = getOctokit();
+  if (!gh) return [];
+  const out: LiveRun[] = [];
+  await Promise.all(
+    configuredRepos().map(async (repo) => {
+      const config = await loadConfig(gh, repo);
+      if (!config) return;
+      const runs = await recentRuns(gh, repo, 5).catch(() => []);
+      for (const r of runs) {
+        const going = r.state === "running" || r.state === "queued";
+        const age = Date.now() - Date.parse(r.startedAt);
+        // Show runs that are going (started in the last hour), or finished runs that started in the last 3 minutes.
+        if (going ? age > 60 * 60_000 : age > 3 * 60_000) continue;
+        const stage = config.stages.find((s) => s.id === r.stageId);
+        out.push({
+          id: r.id, repo, projectName: config.name, stageId: r.stageId ?? "", stageName: stage?.name ?? r.stageId ?? "?", stageUrl: stage?.url,
+          action: r.action, state: r.state === "undone" ? "failed" : r.state, startedAt: r.startedAt, url: r.url,
+        });
+      }
+    }),
+  );
+  return out;
+}
+
+/** Log of the newest run for a stage (lines), or null. */
+export async function getLatestRunLog(repo: string, stageId: string): Promise<{ lines: string[]; url: string } | null> {
+  const gh = getOctokit();
+  if (!gh || !configuredRepos().includes(repo)) return null;
+  const run = (await recentRuns(gh, repo, 20)).find((r) => r.stageId === stageId);
+  if (!run) return null;
+  return { lines: (await runLog(gh, repo, run.id)).split("\n").slice(-200), url: run.url };
+}
+
 export async function getRunLog(repo: string, runId: number): Promise<string | null> {
   const gh = getOctokit();
   if (!gh || !configuredRepos().includes(repo)) return null;

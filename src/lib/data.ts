@@ -67,24 +67,63 @@ export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   return gh.getActivity(slugToRepo(repoSlug));
 }
 
-export async function getRunLog(): Promise<string[]> {
-  // TODO: read the real run log (gh.getRunLog(repo, runId)) once runs carry a GitHub run id.
-  return mock.getRunLog();
+export function isDemo(): boolean {
+  return !live();
 }
 
-// Runs: the run window and overlay still use the in-memory run tracker.
-// In GitHub mode, starting a run also triggers the real workflow through the
-// permission-checked performAction; polling real run progress is the next step.
-export const getActiveRuns = mock.getActiveRuns;
-export const stopRun = mock.stopRun;
+/** Technical log for the "updating" page: the newest real run for that stage, or demo lines. */
+export async function getRunLog(repoSlug?: string, stageId?: string): Promise<string[]> {
+  if (!live()) return mock.getRunLog();
+  if (!repoSlug || !stageId) return [];
+  const r = await gh.getLatestRunLog(slugToRepo(repoSlug), stageId).catch(() => null);
+  return r ? [`Run: ${r.url}`, ...r.lines] : ["No Stage Director run for this stage yet."];
+}
+
+// Runs: demo mode uses the in-memory tracker in ./mock. With GitHub connected,
+// runs are the real Stage Director workflow runs (polled, ETag-cached).
+const KIND: Record<string, mock.RunKind> = { deploy: "update", rollback: "undo", "clear-cache": "clear-cache" };
+
+function fromLive(r: gh.LiveRun): mock.ActiveRun {
+  const going = r.state === "running" || r.state === "queued";
+  return {
+    id: `gh:${r.repo}:${r.stageId}:${r.id}`,
+    repo: r.repo,
+    projectName: r.projectName,
+    stageId: r.stageId,
+    stageName: r.stageName,
+    stageUrl: r.stageUrl,
+    kind: KIND[r.action ?? "deploy"] ?? "update",
+    startedAt: Date.parse(r.startedAt),
+    step: r.state === "queued" ? 0 : going ? 1 : 2,
+    steps: ["Waiting for the runner", "Running on GitHub", "Finished"],
+    progress: r.state === "queued" ? 5 : going ? 50 : 100,
+    state: r.state === "queued" ? "running" : r.state === "running" ? "running" : r.state === "passed" ? "passed" : r.state === "stopped" ? "stopped" : "failed",
+    finishedAt: going ? null : Date.now(),
+  };
+}
+
+export async function getActiveRuns(): Promise<mock.ActiveRun[]> {
+  if (!live()) return mock.getActiveRuns();
+  return (await gh.getLiveRuns().catch(() => [])).map(fromLive);
+}
+
+export async function stopRun(runId: string): Promise<void> {
+  if (!live()) return mock.stopRun(runId);
+  const m = /^gh:([^:]+):([^:]*):(\d+)$/.exec(runId);
+  const login = await gh.currentLogin();
+  if (!m || !login) return;
+  await gh.performAction(login, { repo: m[1], stageId: m[2], action: "stop", runId: Number(m[3]) });
+}
 
 export async function startRun(repo: string, stageId: string, kind: mock.RunKind): Promise<mock.ActiveRun | { error: string }> {
-  if (live()) {
-    const login = await gh.currentLogin();
-    if (!login) return { error: "Sign in with GitHub first" };
-    const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : "deploy";
-    const r = await gh.performAction(login, { repo, stageId, action });
-    if (!r.ok) return { error: r.error };
-  }
-  return mock.startRun(repo, stageId, kind);
+  if (!live()) return mock.startRun(repo, stageId, kind);
+  const login = await gh.currentLogin();
+  if (!login) return { error: "Sign in with GitHub first" };
+  const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : "deploy";
+  const r = await gh.performAction(login, { repo, stageId, action });
+  if (!r.ok) return { error: r.error };
+  const p = await gh.getProject(repo, login);
+  const stage = p?.config.stages.find((s) => s.id === stageId);
+  // GitHub takes a few seconds to list the new run; show it as queued until then.
+  return fromLive({ id: 0, repo, projectName: p?.config.name ?? repo, stageId, stageName: stage?.name ?? stageId, stageUrl: stage?.url, action, state: "queued", startedAt: new Date().toISOString(), url: "" });
 }

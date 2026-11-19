@@ -7,7 +7,7 @@ export default function BannersPage() {
     <Page>
       <BackLink href="/" label="All projects" />
       <h1 className="text-3xl font-extrabold">Banners</h1>
-      <Eyebrow>BANNERS AT THE TOP OF THE OVERVIEW</Eyebrow>
+      <Eyebrow>DEMO DATA · BANNERS AT THE TOP OF THE OVERVIEW</Eyebrow>
       <div className="flex flex-col gap-3">
         <Banner kind="busy" title="Ryan is updating staging" detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${mp}/updating` }} />
         <Banner kind="sync" title="Out of sync" detail="Someone changed 1 file on the live site directly" action={{ label: "Look", href: `${mp}/toolbox#sync` }} />

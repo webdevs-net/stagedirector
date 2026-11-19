@@ -7,7 +7,7 @@ export default async function UpdatingPage({ params, searchParams }: PageProps) 
   const { project: p, base, q, sp } = await loadProject(params, searchParams);
   const stageId = typeof sp.stage === "string" ? sp.stage : "staging";
   const stage = p.config.stages.find((s) => s.id === stageId) ?? p.config.stages[1] ?? p.config.stages[0];
-  const log = await getRunLog();
+  const log = await getRunLog(p.repo, stage.id);
   return (
     <Page width="max-w-[640px]">
       <BackLink href={`${base}${q}`} label={p.config.name} />

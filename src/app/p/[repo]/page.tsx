@@ -45,7 +45,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         {liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
         {liveRunning && <Banner kind="sync" title={`${last.name}: ${runningHeadline(liveRunning, p.config.branch)}`} detail={`${runningDetail(liveRunning)}. Putting live from here still needs the usual approval.`} />}
         {p.extras.quietHours && <Banner kind="quiet" title="Quiet hours" detail={p.extras.quietHours} />}
-        {p.extras.stagingReady && middle && <Banner kind="ready" title={`${middle.name} is ready to look at`} detail="Also sent by email · Alerts" action={{ label: "Open", href: middle.url ?? "#" }} />}
+        {p.extras.stagingReady && middle && <Banner kind="ready" title={`${middle.name} is ready to look at`} detail={`${p.waiting.length} ${p.waiting.length === 1 ? "change" : "changes"} not on ${last.name.toLowerCase()} yet`} action={{ label: "Open", href: middle.url ?? "#" }} />}
       </div>
 
       {local && <LocalWorkCard work={local} mainBranch={p.config.branch} />}
@@ -76,7 +76,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               ) : (
                 <>
                   <span className="text-xl font-extrabold">{(st(middle.id)?.behindBy ?? 0) === 0 ? `Up to date with ${p.config.branch}` : `${st(middle.id)?.behindBy} behind ${p.config.branch}`}</span>
-                  <span className="text-[15px] text-teal-ink">Updated {timeAgo(st(middle.id)?.deployedAt ?? null)} · everything checked out</span>
+                  <span className="text-[15px] text-teal-ink">Updated {timeAgo(st(middle.id)?.deployedAt ?? null)}</span>
                 </>
               )}
               {middle.url && <ButtonLink href={middle.url} className="mt-2.5 min-h-14 text-teal-ink">Open {middle.name.toLowerCase()}</ButtonLink>}
