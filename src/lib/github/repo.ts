@@ -12,7 +12,7 @@ import { summarize, summariesEnabled } from "./summary";
 //    ref = commit, payload { stagedirector: 1, actor, outOfSync?: string[] },
 //    and sets its status to success / failure.
 
-export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache";
+export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot";
 
 export async function readFile(gh: Octokit, repo: string, path: string, ref?: string): Promise<string | null> {
   try {

@@ -9,3 +9,5 @@
   and `ActivityEvent.answers` (request id, on the event that answers it); new `PushRequest`.
 - 2026-11-19 — `Change.commit?: string`; `pr` is 0 for a commit pushed straight to the branch (no PR), so
   direct commits also show as waiting. Found testing against a real repo.
+
+- 2026-11-19 (engine): `ActivityEvent.action` and `wants` gain `"snapshot"` (Save a backup → workflow action `snapshot` → `tools.snapshot`).

@@ -124,7 +124,7 @@ export async function startRun(repo: string, stageId: string, kind: mock.RunKind
   const login = await gh.currentLogin();
   if (!login) return { error: "Sign in with GitHub first" };
   if ((await runs.activeRuns()).some((r) => r.repo === repo && r.state === "running")) return { error: "Something is already running here" };
-  const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : "deploy";
+  const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : kind === "snapshot" ? "snapshot" : "deploy";
   const r = await gh.performAction(login, { repo, stageId, action });
   if (!r.ok) return { error: r.error };
   if (r.recordedAs === "request") return { error: "Saved as a request; a person needs to OK it" };

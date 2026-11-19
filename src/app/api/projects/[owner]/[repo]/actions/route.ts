@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const body = z.object({
   stageId: z.string().min(1),
-  action: z.enum(["deploy", "rollback", "pin", "unpin", "clear-cache", "stop", "approve"]),
+  action: z.enum(["deploy", "rollback", "pin", "unpin", "clear-cache", "snapshot", "stop", "approve"]),
   commit: z.string().regex(/^[0-9a-f]{40}$/).optional(),
   runId: z.number().int().positive().optional(),
   note: z.string().max(500).optional(),

@@ -6,7 +6,7 @@ import { getActivity } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
 
 const VERB: Record<ActivityEvent["action"], string> = {
-  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", check: "checked",
+  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", snapshot: "backed up", check: "checked",
 };
 
 function who(actor: string) {

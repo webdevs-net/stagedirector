@@ -6,7 +6,7 @@
 #
 # What it does
 #   push to the config branch          -> deploys the first stage with `trigger: auto`
-#   workflow_dispatch (from dashboard) -> deploy | rollback | pin | unpin | clear-cache
+#   workflow_dispatch (from dashboard) -> deploy | rollback | pin | unpin | clear-cache | snapshot
 #
 # Locks, in order (any one refuses the run; see engine/contract.md "Live gate"):
 #   1. Policy comes from stagedirector.yml on the DEFAULT branch, never from the commit
@@ -56,7 +56,7 @@ on:
         required: true
         type: choice
         default: deploy
-        options: [deploy, rollback, pin, unpin, clear-cache]
+        options: [deploy, rollback, pin, unpin, clear-cache, snapshot]
       requested_by:
         description: Who asked (GitHub login, or claude:<login> for an AI session acting for a person)
         required: true
@@ -147,7 +147,7 @@ jobs:
           fi
           [[ "$STAGE" =~ ^[a-z0-9][a-z0-9_-]{0,39}$ ]] || fail "Stage id '$STAGE' is not valid."
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character lowercase SHA."
-          case "$ACTION" in deploy|rollback|pin|unpin|clear-cache) ;; *) fail "Unknown action '$ACTION'." ;; esac
+          case "$ACTION" in deploy|rollback|pin|unpin|clear-cache|snapshot) ;; *) fail "Unknown action '$ACTION'." ;; esac
           [[ "$REQUESTED_BY" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || fail "requested_by '$REQUESTED_BY' is not valid."
           git cat-file -e "$COMMIT^{commit}" 2>/dev/null || git fetch -q origin "$COMMIT" 2>/dev/null || true
           git cat-file -e "$COMMIT^{commit}" 2>/dev/null || fail "Commit $COMMIT is not in this repository."
@@ -163,8 +163,9 @@ jobs:
             deploy)   [ -n "$(jq -r '.deploy // empty' <<<"$S")" ] || fail "Stage '$STAGE' has no deploy command." ;;
             rollback) [ -n "$(jq -r '.rollback // empty' <<<"$S")" ] || fail "Stage '$STAGE' has no rollback command." ;;
             clear-cache) [ -n "$(jq -r '.tools.clearCache // empty' "$CFG")" ] || fail "No tools.clearCache command." ;;
+            snapshot) [ -n "$(jq -r '.tools.snapshot // empty' "$CFG")" ] || fail "No tools.snapshot command (backup) in stagedirector.yml." ;;
           esac
-          case "$ACTION" in deploy|rollback|clear-cache) [[ "$RUNNER" =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Stage '$STAGE' needs a runner label." ;; esac
+          case "$ACTION" in deploy|rollback|clear-cache|snapshot) [[ "$RUNNER" =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Stage '$STAGE' needs a runner label." ;; esac
 
           # ---- who may act -------------------------------------------------------------
           codeowners() { # logins on the last "*" line of CODEOWNERS on the default branch; teams expanded
@@ -223,7 +224,7 @@ jobs:
             printf 'Unpinned **%s** by %s (asked by %s).\n' "$STAGE" "$ACTOR" "$REQUESTED_BY" >> "$GITHUB_STEP_SUMMARY"
             stop "Unpinned $STAGE."
           fi
-          if [ "$PINNED" = true ] && [ "$ACTION" != clear-cache ]; then
+          if [ "$PINNED" = true ] && [ "$ACTION" != clear-cache ] && [ "$ACTION" != snapshot ]; then
             fail "Stage '$STAGE' is pinned. Unpin it first."
           fi
 
@@ -384,6 +385,7 @@ jobs:
           DEPLOY_CMD="$(jq -r '.deploy // empty' <<<"$STAGE_JSON")"
           ROLLBACK_CMD="$(jq -r '.rollback // empty' <<<"$STAGE_JSON")"
           CLEAR_CMD="$(jq -r '.clearCache // empty' <<<"$TOOLS_JSON")"
+          SNAPSHOT_CMD="$(jq -r '.snapshot // empty' <<<"$TOOLS_JSON")"
           export STAGEDIRECTOR=1 STAGEDIRECTOR_STAGE="$STAGE" STAGEDIRECTOR_COMMIT="$COMMIT" \
                  STAGEDIRECTOR_ACTOR="$ACTOR" STAGEDIRECTOR_REQUESTED_BY="$REQUESTED_BY" STAGEDIRECTOR_RUN_URL="$RUN_URL" \
                  STAGEDIRECTOR_NO_DOWNTIME="${NO_DOWNTIME:-0}"
@@ -445,6 +447,15 @@ jobs:
           }
 
           case "$ACTION" in
+          snapshot)
+            # A backup of the stage as it is now (e.g. UpdraftPlus to Backblaze). Reads the site; changes nothing on it.
+            [ -n "$SNAPSHOT_CMD" ] || { say "No snapshot command."; exit 1; }
+            run_cmd snapshot "$(fill "$SNAPSHOT_CMD" "")"; RC=$?
+            SNAP_ID="$( { grep -o '^STAGEDIRECTOR_SNAPSHOT=[A-Za-z0-9._:-]*' "$LOG" || true; } | tail -1 | cut -d= -f2)"
+            if [ "$RC" -eq 0 ]; then say "Backup of $STAGE saved${SNAP_ID:+ ($SNAP_ID)}."; else say "Backup of $STAGE FAILED (exit $RC). Nothing on the site changed."; fi
+            exit "$RC"
+            ;;
+
           clear-cache)
             [ -n "$CLEAR_CMD" ] || { say "No clearCache command."; exit 1; }
             run_cmd clear-cache "$CLEAR_CMD"; exit $?

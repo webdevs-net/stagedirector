@@ -7,7 +7,7 @@ import { repoToSlug } from "@/lib/shared";
 import { Icon } from "../ui";
 import { useRuns } from "./RunsProvider";
 
-const VERB: Record<ActiveRun["kind"], string> = { update: "Updating", "put-live": "Putting live:", undo: "Undoing on", "clear-cache": "Clearing cache on" };
+const VERB: Record<ActiveRun["kind"], string> = { update: "Updating", "put-live": "Putting live:", undo: "Undoing on", "clear-cache": "Clearing cache on", snapshot: "Backing up" };
 
 function elapsed(r: ActiveRun, now: number) {
   const s = Math.max(0, Math.round(((r.finishedAt ?? now) - r.startedAt) / 1000));
@@ -15,7 +15,7 @@ function elapsed(r: ActiveRun, now: number) {
 }
 
 export function runTitle(r: ActiveRun) {
-  if (r.state === "passed") return r.kind === "clear-cache" ? "Cache cleared" : `${r.stageName} updated`;
+  if (r.state === "passed") return r.kind === "clear-cache" ? "Cache cleared" : r.kind === "snapshot" ? "Backup saved" : `${r.stageName} updated`;
   if (r.state === "failed") return "Something went wrong — undone";
   if (r.state === "stopped") return "Stopped — nothing changed";
   return `${VERB[r.kind]} ${r.stageName.toLowerCase()}…`;

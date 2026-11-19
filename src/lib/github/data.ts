@@ -136,6 +136,7 @@ const RUN_ACTIONS: Record<Exclude<StageAction, "approve" | "stop">, RunAction> =
   pin: "pin",
   unpin: "unpin",
   "clear-cache": "clear-cache",
+  snapshot: "snapshot",
 };
 const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   deploy: "push",
@@ -143,6 +144,7 @@ const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   pin: "pin",
   unpin: "unpin",
   "clear-cache": "clear-cache",
+  snapshot: "snapshot",
   stop: "stop",
   approve: "approve",
 };

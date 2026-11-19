@@ -88,14 +88,14 @@ export interface ActivityEvent {
   id: string;
   at: string;
   actor: string;              // GitHub login, "auto", or "claude:<login>" for a session acting for a person
-  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "check";
+  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "snapshot" | "check";
   stageId?: string;
   commit?: string;
   result?: RunState;
   note?: string;
   runId?: number;             // GitHub Actions run id, when the event is (or started) a workflow run
   /** On a "request": what the Claude session asks for. */
-  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "approve";
+  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "approve";
   /** On the event that answers a request (the push it led to, or a "decline"): the request's id. */
   answers?: string;
 }
