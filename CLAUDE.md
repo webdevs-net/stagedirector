@@ -12,6 +12,7 @@ Tailwind) on top of self-hosted GitHub Actions runners.
 - Runs on ovh1 at `stagedirector.webdevs.net` (exact name to confirm), reachable **only over Tailscale**. No public port, no public DNS record pointing at it.
 - Two locks: Tailscale (only tailnet devices reach it) + GitHub sign-in (who you are, and your role from CODEOWNERS).
 - Nothing may depend on inbound calls from the internet: no GitHub webhooks into the dashboard. Read state by polling the GitHub API; the runner only makes outbound connections.
+- GitHub sign-in: OAuth app "Stage Director" owned by `netdevs-net` (https://github.com/settings/applications/4034040), client ID `Ov23liJNAQW9rZSh7Nyb`. Callbacks: `https://stagedirector.webdevs.net/api/auth/callback/github` and `http://localhost:3100/api/auth/callback/github`. The client secret is generated and stored by the owner only (never in git or chat).
 - HTTPS via Tailscale (`tailscale serve` / a cert for the tailnet name) or a DNS-challenge cert for the webdevs.net name.
 
 ## Rules
