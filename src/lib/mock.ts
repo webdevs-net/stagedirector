@@ -283,7 +283,7 @@ export { repoToSlug, RUN_STEPS };
 
 // ---- Runs (mock). The data layer replaces these with GitHub workflow-run polling. ----
 
-export type RunKind = "update" | "put-live" | "undo" | "clear-cache";
+export type RunKind = "update" | "put-live" | "undo" | "clear-cache" | "snapshot";
 
 export interface ActiveRun {
   id: string;
@@ -336,7 +336,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
   if (!p) return { error: "No such project" };
   if ([...RUNS.values()].some((r) => r.repo === repo && tick(r).state === "running")) return { error: "Something is already running here" };
   const stage = p.config.stages.find((s) => s.id === stageId) ?? p.config.stages[1];
-  if (kind !== "clear-cache" && PINS.has(`${repo}|${stage.id}`)) return { error: `${stage.name} is pinned. Unpin it first.` };
+  if (kind !== "clear-cache" && kind !== "snapshot" && PINS.has(`${repo}|${stage.id}`)) return { error: `${stage.name} is pinned. Unpin it first.` };
   const run: ActiveRun = {
     id: `run-${Date.now()}`,
     repo,
@@ -347,7 +347,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
     kind,
     startedAt: Date.now(),
     step: 0,
-    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : RUN_STEPS,
+    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : kind === "snapshot" ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"] : RUN_STEPS,
     progress: 0,
     state: "running",
     finishedAt: null,

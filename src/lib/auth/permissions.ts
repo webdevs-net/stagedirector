@@ -1,6 +1,6 @@
 import type { Approval, ProjectConfig, Role, StageConfig } from "@/lib/types";
 
-export type StageAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "stop" | "approve";
+export type StageAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "stop" | "approve";
 
 export type Decision =
   | { allowed: true; recordAs: "action" | "request" }
@@ -109,6 +109,9 @@ export function decide(req: ActionRequest): Decision {
   }
   if (req.action === "clear-cache" && !req.config.tools?.clearCache) {
     return { allowed: false, reason: "this project has no clear-cache command" };
+  }
+  if (req.action === "snapshot" && !req.config.tools?.snapshot) {
+    return { allowed: false, reason: "this project has no backup command (tools.snapshot)" };
   }
   return { allowed: true, recordAs: "action" };
 }

@@ -155,3 +155,15 @@ describe("Claude asks, a person approves", () => {
     expect(openRequestsOf(ev).map((e) => e.id)).toEqual(["0"]);
   });
 });
+
+describe("Save a backup (snapshot)", () => {
+  const withSnap: ProjectConfig = { ...config, tools: { ...config.tools, snapshot: "scripts/deploy.sh backup {stage}" } };
+  it("needs a tools.snapshot command", () => {
+    expect(decide({ config, stageId: "live", action: "snapshot", actor: "ryan", role: "code-owner" }).allowed).toBe(false);
+  });
+  it("follows who may push into the stage, no approval needed, allowed while pinned", () => {
+    expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "ryan", role: "code-owner", pinned: true })).toEqual({ allowed: true, recordAs: "action" });
+    expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "dev", role: "developer" }).allowed).toBe(false);
+    expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "claude:ryan", role: "code-owner" })).toEqual({ allowed: true, recordAs: "request" });
+  });
+});

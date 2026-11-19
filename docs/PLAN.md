@@ -7,3 +7,5 @@
   PR "Checks before and after"). Read from `checks:` in stagedirector.yml; results are stored as `check` activity.
 - 2026-11-18 — Claude request flow: `ActivityEvent.action` gains `"decline"`; `ActivityEvent.wants` (on a request)
   and `ActivityEvent.answers` (request id, on the event that answers it); new `PushRequest`.
+
+- 2026-11-19 (engine): `ActivityEvent.action` and `wants` gain `"snapshot"` (Save a backup → workflow action `snapshot` → `tools.snapshot`).
