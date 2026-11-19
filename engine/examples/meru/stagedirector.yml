@@ -1,0 +1,35 @@
+# Example stagedirector.yml for Meru (netdevs-net/Meru). PLACEHOLDERS marked <...> and TODO
+# are open decisions for the owner. Nothing here has run.
+version: 1
+name: Meru
+group: Meru
+kind: Docker · vultr1 + Cloudflare Workers
+branch: main
+stages:
+  - id: local
+    name: Local
+    pushers: none
+    trigger: manual
+  - id: staging
+    name: Staging
+    url: https://<staging-host>/            # TODO: staging hostname (Cloudflare Access in front?)
+    pushers: developers
+    trigger: auto
+    # Separate compose project "meru-staging" next to live on vultr1, plus the staging Worker.
+    deploy: deploy/stagedirector.sh staging
+    rollback: deploy/stagedirector.sh rollback staging {backup}
+    status: deploy/stagedirector.sh status --json
+    smokeTest: [/healthz]                   # TODO: real pages (dashboard login, unsub, booking)
+    runner: vultr1
+  - id: live
+    name: Live
+    url: https://<live-host>/
+    pushers: code-owners
+    trigger: manual
+    deploy: deploy/stagedirector.sh live
+    rollback: deploy/stagedirector.sh rollback live {backup}
+    status: deploy/stagedirector.sh status --json
+    smokeTest: [/healthz]
+    runner: vultr1
+tools:
+  syncCheck: deploy/stagedirector.sh drift live

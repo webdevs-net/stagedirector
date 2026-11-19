@@ -1,0 +1,7 @@
+# Copy to ssh/config. One block per project host. No IdentityFile: keys come from ssh-agent.
+Host <alias>
+  HostName <host>
+  User <user>
+  Port 22
+  StrictHostKeyChecking yes
+  ServerAliveInterval 30

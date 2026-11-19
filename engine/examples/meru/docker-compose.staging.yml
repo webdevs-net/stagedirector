@@ -1,0 +1,48 @@
+# Template: Meru STAGING as its own Compose project next to live on vultr1.
+#
+#   docker compose -p meru-staging --env-file .env.staging \
+#     -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# The project name (-p meru-staging) gives staging its own containers, networks and named
+# volumes, so it can never reuse live's containers, data or the sendgw registry.
+# Fill the TODOs from Meru's real compose file; service names below are placeholders.
+
+name: meru-staging
+
+x-staging-limits: &limits
+  restart: unless-stopped
+  mem_limit: ${STAGING_SERVICE_MEMORY:-384m}
+  cpus: ${STAGING_SERVICE_CPUS:-0.5}
+  pids_limit: 256
+
+services:
+  # TODO: one block per Meru service (dashboard, pipelined, sendgw, mautic, unsub/booking).
+  # Each gets the caps, staging-only ports bound to 127.0.0.1, and the mail sink below.
+  dashboard:
+    <<: *limits
+    ports: !override
+      - "127.0.0.1:${STAGING_DASHBOARD_PORT:-18080}:8080"   # TODO: real container port
+    environment:
+      MERU_ENV: staging
+
+  sendgw:
+    <<: *limits
+    ports: !reset []
+    environment:
+      MERU_ENV: staging
+      # MAIL DECISION (owner, still open). Default suggestion = catch-all:
+      # every message goes to the local Mailpit below; nothing leaves the box.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      # Alternative = allowlist: real SMTP, but only to these addresses. TODO if chosen.
+      # MAIL_ALLOWLIST: "<you@example.com>"
+
+  # Catch-all inbox for staging mail. Web UI on 127.0.0.1 only (reach it over SSH/Tailscale).
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    <<: *limits
+    mem_limit: 128m
+    ports:
+      - "127.0.0.1:${STAGING_MAILPIT_PORT:-18025}:8025"
+
+# Live's volumes are never named here; staging's are prefixed meru-staging_ automatically.

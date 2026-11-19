@@ -1,0 +1,9 @@
+# Opt-in: give jobs the host's Docker (for projects whose deploy runs `docker compose` on the
+# same host, e.g. Meru staging next to live on one server). This makes jobs root on the host;
+# use it only on a runner whose label is used by that one project.
+services:
+  runner:
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID in .env}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
