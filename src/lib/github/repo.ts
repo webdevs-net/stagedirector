@@ -3,6 +3,7 @@ import type { Change, ProjectConfig, RunState, StageStatus } from "@/lib/types";
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
+import { summarize, summariesEnabled } from "./summary";
 
 // Contract with the engine's workflow (.github/workflows/stagedirector.yml):
 //  - workflow_dispatch inputs: stage, commit, action, requested_by
@@ -134,13 +135,25 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
   if (!from) return [];
   const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
   const seen = new Map<number, Change>();
+  const bodies = new Map<number, { body: string | null; sha: string }>();
   for (const c of data.commits.slice(-50)) {
     const { data: prs } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: c.sha });
     for (const pr of prs) {
       if (!pr.merged_at || seen.has(pr.number)) continue;
       const pages = (pr.body ?? "").match(/(?<=\bpages?:\s*)(\/[^\s,]*(?:[\s,]+\/[^\s,]*)*)/i)?.[0].split(/[\s,]+/);
       seen.set(pr.number, { pr: pr.number, title: pr.title, summary: plainSummary(pr.body, pr.title), url: pr.html_url, ...(pages ? { pages } : {}) });
+      bodies.set(pr.number, { body: pr.body, sha: pr.merge_commit_sha ?? pr.head.sha });
     }
+  }
+  // "What this update does": Claude's plain summary when ANTHROPIC_API_KEY is set (cached per PR), else the first line of the description.
+  if (summariesEnabled()) {
+    await Promise.all(
+      [...seen.values()].map(async (ch) => {
+        const b = bodies.get(ch.pr)!;
+        const files = await gh.paginate(gh.rest.pulls.listFiles, { ...splitRepo(repo), pull_number: ch.pr, per_page: 100 }).catch(() => []);
+        ch.summary = await summarize({ repo, number: ch.pr, title: ch.title, body: b.body, sha: b.sha, files: files.map((f) => f.filename) });
+      }),
+    );
   }
   return [...seen.values()].sort((a, b) => a.pr - b.pr);
 }
