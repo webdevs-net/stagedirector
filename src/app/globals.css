@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg: #f2f6fa;
+  --color-ink: #1e2b3a;
+  --color-muted: #5a6b7d;
+  --color-soft: #3d5470;
+  --color-line: #c8d3df;
+  --color-chip: #eef2f7;
+  --color-teal: #0f8f8a;
+  --color-teal-ink: #0d5a57;
+  --color-teal-soft: #dff5f3;
+  --color-blue: #2563b8;
+  --color-blue-soft: #e8f1fd;
+  --color-amber: #9a5b00;
+  --color-amber-soft: #fff4e5;
+  --color-red: #b42d2d;
+  --color-red-soft: #fde8e8;
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+summary { cursor: pointer; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+details[open] > summary .chev { transform: rotate(180deg); }
+:focus-visible { outline: 3px solid #2563b8; outline-offset: 2px; }
+
+/* Run-in-progress feedback */
+@keyframes sd-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes sd-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+@keyframes sd-spin { to { transform: rotate(360deg); } }
+.run-sweep { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(37,99,184,.12) 50%, transparent 80%); animation: sd-sweep 2.2s ease-in-out infinite; }
+.run-strip { position: relative; overflow: hidden; height: 4px; border-radius: 2px; background: #e8f1fd; }
+.run-strip::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #2563b8, transparent); animation: sd-sweep 1.6s linear infinite; }
+.run-dot { animation: sd-pulse 1.4s ease-in-out infinite; }
+.run-spin { animation: sd-spin 3s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .run-sweep, .run-strip::after, .run-dot, .run-spin, .animate-spin { animation: none !important; }
+  .run-sweep { display: none; }
+  .run-strip::after { background: #2563b8; opacity: .5; }
 }
