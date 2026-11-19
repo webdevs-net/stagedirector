@@ -186,7 +186,7 @@ function build(): ProjectView[] {
           : [];
       list.push({
         repo,
-        config: { version: 1, name: `${g.name} · ${site}`, group: g.name, kind: g.kind, branch: "main", stages },
+        config: { version: 1, name: `${g.name} · ${site}`, group: g.name, kind: g.kind, branch: "main", stages, ...(g.kind.startsWith("Next.js") ? { noDowntime: true } : {}) },
         stages: statusFor(stages, flavor, i),
         waiting,
         needsMe: flavor === "ready" || flavor === "sync" || flavor === "fail",

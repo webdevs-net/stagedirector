@@ -76,6 +76,7 @@ jobs:
       stage: ${{ steps.gate.outputs.stage }}
       stage_json: ${{ steps.gate.outputs.stage_json }}
       tools_json: ${{ steps.gate.outputs.tools_json }}
+      no_downtime: ${{ steps.gate.outputs.no_downtime }}
       is_last: ${{ steps.gate.outputs.is_last }}
       commit: ${{ steps.gate.outputs.commit }}
       action: ${{ steps.gate.outputs.action }}
@@ -258,6 +259,7 @@ jobs:
           out stage "$STAGE"
           out stage_json "$S"
           out tools_json "$(jq -c '.tools // {}' "$CFG")"
+          out no_downtime "$(jq -r 'if .noDowntime == true then 1 else 0 end' "$CFG")"
           out is_last "$IS_LAST"
           out commit "$COMMIT"
           out action "$ACTION"
@@ -291,6 +293,7 @@ jobs:
       STAGE: ${{ needs.gate.outputs.stage }}
       STAGE_JSON: ${{ needs.gate.outputs.stage_json }}
       TOOLS_JSON: ${{ needs.gate.outputs.tools_json }}
+      NO_DOWNTIME: ${{ needs.gate.outputs.no_downtime }}
       IS_LAST: ${{ needs.gate.outputs.is_last }}
       COMMIT: ${{ needs.gate.outputs.commit }}
       ACTION: ${{ needs.gate.outputs.action }}
@@ -370,7 +373,8 @@ jobs:
           ROLLBACK_CMD="$(jq -r '.rollback // empty' <<<"$STAGE_JSON")"
           CLEAR_CMD="$(jq -r '.clearCache // empty' <<<"$TOOLS_JSON")"
           export STAGEDIRECTOR=1 STAGEDIRECTOR_STAGE="$STAGE" STAGEDIRECTOR_COMMIT="$COMMIT" \
-                 STAGEDIRECTOR_ACTOR="$ACTOR" STAGEDIRECTOR_REQUESTED_BY="$REQUESTED_BY" STAGEDIRECTOR_RUN_URL="$RUN_URL"
+                 STAGEDIRECTOR_ACTOR="$ACTOR" STAGEDIRECTOR_REQUESTED_BY="$REQUESTED_BY" STAGEDIRECTOR_RUN_URL="$RUN_URL" \
+                 STAGEDIRECTOR_NO_DOWNTIME="${NO_DOWNTIME:-0}"
 
           fill() { # fill(template, backup) -> command with {backup} {commit} {stage} replaced
             local c="$1"; c="${c//\{backup\}/$2}"; c="${c//\{commit\}/$COMMIT}"; printf '%s' "${c//\{stage\}/$STAGE}"

@@ -57,6 +57,12 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
           </div>
         )}
 
+        <p className={`rounded-[18px] px-4 py-3 text-[15px] ${p.config.noDowntime ? "bg-teal-soft text-teal-ink" : "bg-chip text-soft"}`}>
+          {p.config.noDowntime
+            ? "No-downtime switch: the new version is prepared next to the old one, then swapped in one step. Visitors never see a half-updated site, and Undo takes seconds."
+            : "Normal update: files are copied over the running site, so it can be slow for a moment. Undo restores the backup."}
+        </p>
+
         <div className="flex flex-col gap-2.5">
           {canPush ? (
             <ActionButton act="run" repo={p.repo} stageId={last.id} kind="put-live" next={`${base}${q}`} className="min-h-[72px] rounded-[22px] bg-blue text-[21px] text-white shadow-[0_8px_20px_rgba(37,99,184,.3)]">
