@@ -50,6 +50,23 @@ export interface StageStatus {
   behindBy: number;           // commits behind the previous stage
   outOfSync: string[];        // files changed on the server outside git
   pinned: boolean;
+  /**
+   * What the server actually runs, when that differs from `commit` (Stage Director's own
+   * record): e.g. a deploy made from a terminal. Display only — never used to allow a push;
+   * the live gate still requires a Stage Director deployment of the same commit.
+   */
+  running?: RunningCommit | null;
+}
+
+/** A commit seen on a stage outside Stage Director's own deploys (see engine/contract.md "Outside deploys"). */
+export interface RunningCommit {
+  commit: string;
+  at: string;                 // ISO, when it was reported or seen
+  by: string | null;          // who reported it
+  source: "terminal" | "version-check";
+  ref?: string;               // branch it came from, when known
+  behindBy: number;           // commits behind the branch head
+  onBranch: boolean;          // false when the commit is not on the project branch (e.g. a feature branch)
 }
 
 export interface Change {

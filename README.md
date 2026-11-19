@@ -137,3 +137,16 @@ Without GitHub credentials it runs on **sample data** (what the screenshots show
 2. Copy [`engine/workflow/stagedirector.yml`](engine/workflow/stagedirector.yml) to `.github/workflows/`.
 3. Make the deploy script follow the [contract](engine/contract.md).
 4. Add a `CODEOWNERS` file, protect `main`, and create the `stagedirector-<stage>` environments ([runner guide](engine/runner/README.md)).
+
+## Live updates and local mode
+
+- Pages re-read GitHub every 15 s while visible, on window focus and right after a button
+  press ("Updated Xs ago", top right). GET requests send `If-None-Match`; unchanged answers
+  come back as 304 and do not use rate limit (`src/lib/github/etag.ts`).
+- **Local mode**: when the dashboard is opened at `localhost`, a project page shows the
+  local checkout's uncommitted files and unpushed commits, with the push command to copy.
+  Map repos to folders in `stagedirector.local.json` (git-ignored; see
+  `stagedirector.local.example.json`) or `STAGEDIRECTOR_LOCAL_PATHS="owner/repo=/path"`.
+  Read-only: it never commits or pushes.
+- **Outside deploys** (e.g. `scripts/deploy.sh staging` from a terminal): see
+  `engine/contract.md` "Outside deploys". Display only; the live gate is unchanged.

@@ -1,0 +1,65 @@
+# Stage Director — version check (optional).
+#
+# Copy to .github/workflows/stagedirector-observe.yml in a project repo. Every 30
+# minutes it reads the version marker each stage serves at <url>/.stagedirector-version
+# (a 40-character commit SHA written by the project's deploy script, see
+# engine/contract.md "Outside deploys") and, when it differs from what Stage Director
+# last saw, records a GitHub Deployment in environment "observed-<stage>".
+#
+# Display only. The live gate in stagedirector.yml reads environment=<stage> and never
+# these records, so nothing here can unlock or start a push. It needs no host access
+# and runs GitHub-hosted. Password-protected staging: set the repository secret
+# STAGEDIRECTOR_BASIC_AUTH (user:password) — sent only to non-last stages.
+
+name: Stage Director version check
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: stagedirector-observe-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Read version markers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASIC_AUTH: ${{ secrets.STAGEDIRECTOR_BASIC_AUTH }}
+        run: |
+          set -euo pipefail
+          api() { gh api -H 'X-GitHub-Api-Version: 2022-11-28' "$@"; }
+          stages="$(yq -o=json '.stages' stagedirector.yml)"
+          n="$(jq length <<<"$stages")"
+          for i in $(seq 0 $((n - 1))); do
+            id="$(jq -r ".[$i].id" <<<"$stages")"; url="$(jq -r ".[$i].url // empty" <<<"$stages")"
+            pushers="$(jq -r ".[$i].pushers" <<<"$stages")"
+            [ -n "$url" ] && [ "$pushers" != none ] || continue
+            auth=(); [ $i -lt $((n - 1)) ] && [ -n "$BASIC_AUTH" ] && auth=(-u "$BASIC_AUTH")
+            sha="$(curl -fsS --max-time 15 "${auth[@]}" "${url%/}/.stagedirector-version" 2>/dev/null | tr -d '[:space:]' | grep -oE '^[0-9a-f]{40}' || true)"
+            [ -n "$sha" ] || { echo "$id: no version marker"; continue; }
+            last="$(api "repos/$REPO/deployments?environment=observed-$id&per_page=1" --jq '.[0].sha // empty')"
+            own="$(api "repos/$REPO/deployments?environment=$id&per_page=1" --jq '.[0].sha // empty')"
+            if [ "$sha" = "$last" ] || { [ -z "$last" ] && [ "$sha" = "$own" ]; }; then echo "$id: ${sha:0:7} (no change)"; continue; fi
+            api "repos/$REPO/commits/$sha" --silent 2>/dev/null || { echo "::warning::$id runs ${sha:0:7}, which is not on GitHub"; continue; }
+            dep="$(jq -n --arg ref "$sha" --arg env "observed-$id" \
+              '{ref:$ref, environment:$env, auto_merge:false, required_contexts:[], transient_environment:true, production_environment:false,
+                description:"Seen by the version check", payload:{stagedirector:1, observed:true, source:"version-check", actor:"version-check"}}' \
+              | api -X POST "repos/$REPO/deployments" --input - --jq .id)"
+            api -X POST "repos/$REPO/deployments/$dep/statuses" -f state=success -f description="Version marker ${sha:0:7}" --silent
+            echo "$id: now ${sha:0:7} (recorded)"
+          done
