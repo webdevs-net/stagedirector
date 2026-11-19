@@ -1,7 +1,7 @@
 import { loadProject, type PageProps } from "@/components/load";
 import { RunDetails } from "@/components/runs/RunDetails";
 import { BackLink, Chevron, Page } from "@/components/ui";
-import { getRunLog } from "@/lib/mock";
+import { getRunLog } from "@/lib/data";
 
 export default async function UpdatingPage({ params, searchParams }: PageProps) {
   const { project: p, base, q, sp } = await loadProject(params, searchParams);

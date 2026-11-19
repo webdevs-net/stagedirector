@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { ProjectView } from "@/lib/mock";
-import { repoToSlug } from "@/lib/mock";
+import type { ProjectView } from "@/lib/data";
+import { repoToSlug } from "@/lib/shared";
 import { StageBars } from "./StageBars";
 import { Chevron, Icon } from "./ui";
 import { HEALTH_LABEL, healthOf, timeAgo } from "./status";

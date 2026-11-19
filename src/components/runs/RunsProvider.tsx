@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { listRunsAction, startRunAction, stopRunAction } from "@/app/actions";
-import type { ActiveRun, RunKind } from "@/lib/mock";
+import type { ActiveRun, RunKind } from "@/lib/data";
 
 interface RunsCtx {
   runs: ActiveRun[];

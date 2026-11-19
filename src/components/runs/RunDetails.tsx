@@ -1,6 +1,6 @@
 "use client";
 
-import { RUN_STEPS } from "@/lib/mock";
+import { RUN_STEPS } from "@/lib/shared";
 import { ActionButton } from "../ActionButton";
 import { Icon } from "../ui";
 import { runTitle } from "./RunWindow";

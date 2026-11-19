@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { RunKind } from "@/lib/mock";
+import type { RunKind } from "@/lib/data";
 import { useRuns } from "./runs/RunsProvider";
 
 export function ToolTile({ repo, stageId, kind, title, detail, icon, badge }: { repo: string; stageId: string; kind?: RunKind; title: string; detail: string; icon: ReactNode; badge?: number }) {

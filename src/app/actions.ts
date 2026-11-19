@@ -4,7 +4,7 @@
 // approves or pushes live on its own. Runs go through the mock run interface
 // (getActiveRuns/startRun/stopRun in src/lib/mock.ts), which the data layer
 // will replace with GitHub workflow runs.
-import * as data from "@/lib/mock";
+import * as data from "@/lib/data";
 
 export async function startRunAction(repo: string, stageId: string, kind: data.RunKind) {
   return data.startRun(repo, stageId, kind);

@@ -9,6 +9,7 @@ import type {
   StageConfig,
   StageStatus,
 } from "./types";
+import { RUN_STEPS, repoToSlug } from "./shared";
 
 export interface Viewer {
   login: string;
@@ -246,9 +247,7 @@ export async function getRunLog(): Promise<string[]> {
   ];
 }
 
-export function repoToSlug(repo: string): string {
-  return repo.replace("/", "~");
-}
+export { repoToSlug, RUN_STEPS };
 
 // ---- Runs (mock). The data layer replaces these with GitHub workflow-run polling. ----
 
@@ -270,7 +269,6 @@ export interface ActiveRun {
   finishedAt: number | null;
 }
 
-export const RUN_STEPS = ["Checking what's changing", "Saving a backup", "Copying files", "Making sure the site still loads"];
 const RUN_MS = 20_000;
 
 const g = globalThis as unknown as { __sdRuns?: Map<string, ActiveRun> };

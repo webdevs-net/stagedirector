@@ -1,4 +1,4 @@
-import type { ProjectView } from "@/lib/mock";
+import type { ProjectView } from "@/lib/data";
 import { barColors } from "./status";
 
 export function StageBars({ p, small = false }: { p: ProjectView; small?: boolean }) {

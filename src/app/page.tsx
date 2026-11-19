@@ -1,6 +1,6 @@
 import { ProjectBrowser } from "@/components/ProjectBrowser";
 import { Button, Icon, Page } from "@/components/ui";
-import { getViewer, listProjects } from "@/lib/mock";
+import { getViewer, listProjects } from "@/lib/data";
 
 export default async function HomePage() {
   const [viewer, projects] = await Promise.all([getViewer(), listProjects()]);

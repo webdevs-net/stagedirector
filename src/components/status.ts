@@ -1,4 +1,4 @@
-import type { ProjectView } from "@/lib/mock";
+import type { ProjectView } from "@/lib/data";
 
 export type Health = "ok" | "ready" | "sync" | "fail" | "busy";
 

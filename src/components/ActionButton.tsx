@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { approveForLive } from "@/app/actions";
-import type { RunKind } from "@/lib/mock";
+import type { RunKind } from "@/lib/data";
 import { useRuns } from "./runs/RunsProvider";
 
 type Props = {

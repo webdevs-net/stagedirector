@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { ActiveRun } from "@/lib/mock";
-import { repoToSlug } from "@/lib/mock";
+import type { ActiveRun } from "@/lib/data";
+import { repoToSlug } from "@/lib/shared";
 import { Icon } from "../ui";
 import { useRuns } from "./RunsProvider";
 
@@ -27,14 +27,26 @@ export function RunWindow() {
   const [mini, setMini] = useState<Record<string, boolean>>({});
   const [gone, setGone] = useState<Record<string, boolean>>({});
 
+  const [phone, setPhone] = useState(false);
+
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setPhone(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => {
+      clearInterval(t);
+      mq.removeEventListener("change", update);
+    };
   }, []);
 
   // Auto-collapse finished runs ~10 s after they end.
   const visible = runs.filter((r) => !gone[r.id] && !(r.finishedAt && now - r.finishedAt > 10_000));
   if (visible.length === 0) return null;
+  // On phones only the newest run is shown in full; the others start as pills.
+  const newest = visible.reduce((a, b) => (b.startedAt > a.startedAt ? b : a)).id;
+  const isMini = (id: string) => mini[id] ?? (phone && id !== newest);
 
   return (
     <aside aria-label="Runs in progress" className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 p-3 sm:inset-x-auto sm:right-5 sm:bottom-5 sm:w-[380px] sm:p-0">
@@ -44,7 +56,7 @@ export function RunWindow() {
         const bad = r.state === "failed";
         const tone = !done ? "bg-white" : ok ? "bg-teal-soft" : bad ? "bg-red-soft" : "bg-chip";
         const base = `/p/${repoToSlug(r.repo)}`;
-        if (mini[r.id]) {
+        if (isMini(r.id)) {
           return (
             <button key={r.id} type="button" onClick={() => setMini({ ...mini, [r.id]: false })}
               className={`ml-auto flex min-h-[52px] items-center gap-2.5 rounded-full px-5 font-extrabold shadow-[0_8px_30px_rgba(30,43,58,.18)] ${tone}`}>

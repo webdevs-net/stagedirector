@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
-import { getProject, getViewer, type Viewer } from "@/lib/mock";
+import { getProject, getViewerFor, type Viewer } from "@/lib/data";
 
 export async function loadProject(params: Promise<{ repo: string }>, searchParams?: Promise<Record<string, string | string[] | undefined>>) {
   const { repo } = await params;
   const sp = (await searchParams) ?? {};
   const project = await getProject(decodeURIComponent(repo));
   if (!project) notFound();
-  let viewer: Viewer = await getViewer();
+  let viewer: Viewer = await getViewerFor(project.repo);
   // ?as=developer previews what a developer sees (UI only; real roles come from CODEOWNERS).
   if (sp.as === "developer") viewer = { ...viewer, role: "developer" };
   const base = `/p/${repo}`;

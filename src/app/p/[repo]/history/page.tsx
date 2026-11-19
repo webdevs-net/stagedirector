@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { BackLink, ButtonLink, Chevron, Eyebrow, Page } from "@/components/ui";
-import { getActivity } from "@/lib/mock";
+import { getActivity } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
 
 const VERB: Record<ActivityEvent["action"], string> = {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { repoToSlug } from "@/lib/mock";
+import { repoToSlug } from "@/lib/shared";
 import { runTitle } from "./RunWindow";
 import { useRuns } from "./RunsProvider";
 
