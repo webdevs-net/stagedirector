@@ -276,6 +276,7 @@ async function performActionFresh(actor: string, input: ActionInput): Promise<Ac
     commit,
     action: RUN_ACTIONS[input.action as keyof typeof RUN_ACTIONS],
     requestedBy: actor,
+    gateRunner: config.gateRunner,
   });
   const event = await store.append(input.repo, { ...base, commit, action: EVENT_ACTION[input.action], result: "queued" });
   return { ok: true, recordedAs: "action", event };

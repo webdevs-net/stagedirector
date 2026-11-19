@@ -354,14 +354,12 @@ export async function startRun(
   gh: Octokit,
   repo: string,
   branch: string,
-  inputs: { stage: string; commit: string; action: RunAction; requestedBy: string },
+  inputs: { stage: string; commit: string; action: RunAction; requestedBy: string; gateRunner?: "github" | "self-hosted" },
 ): Promise<void> {
-  await gh.rest.actions.createWorkflowDispatch({
-    ...splitRepo(repo),
-    workflow_id: WORKFLOW_FILE,
-    ref: branch,
-    inputs: { stage: inputs.stage, commit: inputs.commit, action: inputs.action, requested_by: inputs.requestedBy },
-  });
+  const sent: Record<string, string> = { stage: inputs.stage, commit: inputs.commit, action: inputs.action, requested_by: inputs.requestedBy };
+  // Only sent when set, so workflows copied before gate_runner existed keep working.
+  if (inputs.gateRunner) sent.gate_runner = inputs.gateRunner;
+  await gh.rest.actions.createWorkflowDispatch({ ...splitRepo(repo), workflow_id: WORKFLOW_FILE, ref: branch, inputs: sent });
 }
 
 export async function cancelRun(gh: Octokit, repo: string, runId: number): Promise<void> {

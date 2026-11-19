@@ -61,6 +61,10 @@ on:
         description: Who asked (GitHub login, or claude:<login> for an AI session acting for a person)
         required: true
         type: string
+      gate_runner:
+        description: Where "Check rules" runs. self-hosted = a runner labelled sd-gate; anything else = GitHub-hosted
+        required: false
+        type: string
 
 permissions:
   contents: write # pin refs (refs/stagedirector/pins/<stage>), git fetch
@@ -77,8 +81,11 @@ concurrency:
 jobs:
   gate:
     name: Check rules
-    # GitHub-hosted: needs no host access, works for projects with no self-hosted runner.
-    runs-on: ubuntu-latest
+    # GitHub-hosted by default (needs no host access). gateRunner: self-hosted in stagedirector.yml
+    # (passed by the dashboard), or repo variable STAGEDIRECTOR_GATE_RUNNER=self-hosted for pushes,
+    # runs it on a runner labelled sd-gate instead, which uses no GitHub-hosted minutes. The label is
+    # fixed here, so a caller cannot send this job to a stage's deploy runner.
+    runs-on: ${{ (inputs.gate_runner || vars.STAGEDIRECTOR_GATE_RUNNER) == 'self-hosted' && fromJSON('["self-hosted","sd-gate"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
       go: ${{ steps.gate.outputs.go }}

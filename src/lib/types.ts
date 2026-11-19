@@ -37,6 +37,7 @@ export interface ProjectConfig {
   liveTodo?: string[];        // manual steps to repeat after a live push
   checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
+  gateRunner?: "github" | "self-hosted"; // where the "Check rules" job runs; self-hosted = runner labelled sd-gate
 }
 
 /** One check the dashboard runs against a stage (before approving, and after each run). */
