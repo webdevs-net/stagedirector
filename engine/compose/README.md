@@ -46,8 +46,9 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 
 ## Safety
 
-- Runs as the unprivileged `runner` user, `no-new-privileges`, all capabilities dropped,
-  memory/CPU/PID caps (`RUNNER_MEMORY`, `RUNNER_CPUS`) so jobs can't starve the sites.
+- Runs as the `runner` user. The base image puts it in `sudo`; `no-new-privileges` and
+  dropping all capabilities block that (checked: sudo refuses). Never remove those two lines.
+  Memory/CPU/PID caps (`RUNNER_MEMORY`, `RUNNER_CPUS`) so jobs can't starve the sites.
 - **No Docker socket by default.** A job that can reach it is root on the host. Only for a
   project whose deploy runs `docker compose` on this same host, add the overlay:
   ```bash
