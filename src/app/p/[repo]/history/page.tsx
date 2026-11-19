@@ -36,7 +36,13 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
   return (
     <Page width="max-w-[860px]">
       <BackLink href={`${base}${q}`} label={p.config.name} />
-      <h1 className="text-3xl font-extrabold">History</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-3xl font-extrabold">History</h1>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/activity?repo=${encodeURIComponent(p.repo)}`} className="inline-flex min-h-[52px] items-center rounded-2xl bg-white px-5 font-extrabold">Full record &amp; filters</Link>
+          <a href={`/api/activity?repo=${encodeURIComponent(p.repo)}&format=csv`} download className="inline-flex min-h-[52px] items-center rounded-2xl bg-teal px-5 font-extrabold text-white">Download CSV</a>
+        </div>
+      </div>
       <nav aria-label="Filter" className="flex flex-wrap gap-2">
         {[{ id: "all", name: "Everything" }, ...p.config.stages.slice(1).reverse()].map((s) => (
           <Link key={s.id} href={`${base}/history?f=${s.id}${extra}`} aria-current={filter === s.id ? "page" : undefined}
