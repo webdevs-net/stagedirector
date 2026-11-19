@@ -49,8 +49,8 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 - Runs as the `runner` user. The base image puts it in `sudo`; `no-new-privileges` and
   dropping all capabilities block that (checked: sudo refuses). Never remove those two lines.
   Memory/CPU/PID caps (`RUNNER_MEMORY`, `RUNNER_CPUS`) so jobs can't starve the sites.
-- **No Docker socket by default.** A job that can reach it is root on the host. Only for a
-  project whose deploy runs `docker compose` on this same host, add the overlay:
+- **No Docker socket by default.** A job that can reach it is root on the host. Prefer the forced-command SSH kit (`../kits/ssh-compose/`) instead. Only if a
+  project really must run `docker compose` from a runner on its own host, add the overlay:
   ```bash
   docker compose -f docker-compose.yml -f docker-socket.yml up -d
   ```
@@ -64,25 +64,14 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 |---|---|
 | Update tools / runner | bump `RUNNER_VERSION` / `WRANGLER_VERSION` in `.env`, then `docker compose up -d --build` |
 | Stop | `docker compose down` (keeps registration) |
-| Remove completely | in GitHub remove the runner, then `docker compose down -v` |
+| Remove completely | in GitHub remove the runner, then `docker compose -p <COMPOSE_PROJECT_NAME> down -v` (always name the project) |
 
 ## Per project
 
-| Project | Host | Runner label | Notes |
-|---|---|---|---|
-| Maria's Place | ovh1 → Hostinger over SSH | `ovh1` | No Docker socket needed. Uses `scripts/deploy.sh` (see `../patches/`). |
-| Meru | vultr1 (staging next to live) | `vultr1` | Needs `docker-socket.yml` (deploys `docker compose` on the same host) and the Cloudflare secrets. See `../examples/meru/`. |
+| Project | How it deploys | Bundle needed? |
+|---|---|---|
+| **Meru** (priority) | GitHub-hosted job → Tailscale → forced-command SSH → `stagedirector-remote` on vultr1. Staging next to live as its own Compose project. | **No.** No runner on vultr1 (a runner there could change live). See `../examples/meru/` and `../kits/ssh-compose/`. |
+| Maria's Place | self-hosted runner on ovh1 → SSH to Hostinger (`scripts/deploy.sh`) | Yes, this bundle (or `../runner/setup-ovh1.sh`), without the Docker socket. Work flows local `main` → staging → live. |
 
-### Meru: open decisions (placeholders)
-
-- **Staging host name** and whether Cloudflare Access protects it: `<staging-host>` in
-  `../examples/meru/stagedirector.yml`.
-- **Staging mail**: catch-all (default suggestion: Mailpit, nothing leaves the box) or an
-  allowlist of real addresses. Marked `MAIL DECISION` in
-  `../examples/meru/docker-compose.staging.yml`.
-- **Deploy script**: `deploy/stagedirector.sh` does not exist in Meru yet; it must follow
-  `../contract.md` and use the compose project `meru-staging` for staging (own containers,
-  volumes, networks and ports; caps per service), so staging can never touch live's data or
-  the sendgw registry.
-- Meru's existing `.github/workflows/deploy.yml` (off, `DEPLOY_ENABLED`) stays off; Stage
-  Director's workflow replaces it once the above is decided.
+Wrangler (Cloudflare Workers/Pages) deploys run fine on GitHub-hosted jobs too
+(`runner: github`); keep separate staging and live Cloudflare tokens as environment secrets.

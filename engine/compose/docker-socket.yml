@@ -1,5 +1,5 @@
 # Opt-in: give jobs the host's Docker (for projects whose deploy runs `docker compose` on the
-# same host, e.g. Meru staging next to live on one server). This makes jobs root on the host;
+# same host). This makes jobs root on the host. Meru does NOT use this: see ../kits/ssh-compose/;
 # use it only on a runner whose label is used by that one project.
 services:
   runner:

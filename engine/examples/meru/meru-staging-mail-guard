@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Host-side guard for Meru staging (GUARD= in /etc/stagedirector/meru-staging.env). Exit 0 only
+# when staging cannot mail real people. Runs before every staging deploy. NOT RUN YET.
+set -euo pipefail
+ENV_FILE="${MERU_STAGING_ENV:-/opt/meru-staging/.env}"
+TEST_DOMAIN_RE="${MERU_TEST_ADDRESS_RE:-^<owner-test-pattern>$}"   # TODO(owner): regex every staging address must match
+fail() { echo "mail guard: $*" >&2; exit 1; }
+get() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+
+[ -f "$ENV_FILE" ] || fail "missing $ENV_FILE"
+[ "${COMPOSE_PROJECT_NAME:-}" = meru-pipeline-staging ] || fail "unexpected project ${COMPOSE_PROJECT_NAME:-none}"
+
+allow="$(get GATEWAY_RECIPIENT_ALLOWLIST)"
+[ -n "$allow" ] || fail "GATEWAY_RECIPIENT_ALLOWLIST is empty"
+for a in ${allow//,/ }; do [[ "$a" =~ $TEST_DOMAIN_RE ]] || fail "allowlist has a non-test address: $a"; done
+
+# Staging must not share live's secrets or registry.
+dir="$(get STAGING_SENDGW_DIR)"
+[ -n "$dir" ] && [ "$dir" != /opt/meru-pipeline/sendgw ] || fail "STAGING_SENDGW_DIR must be staging's own folder"
+python3 - "$dir/domains.json" "${STAGING_DAILY_CAP_MAX:-25}" <<'PY' || fail "staging domains.json caps too high or unreadable"
+import json, sys
+d = json.load(open(sys.argv[1]))["domains"]
+sys.exit(0 if all(int(x.get("daily_cap", 0)) <= int(sys.argv[2]) for x in d) else 1)
+PY
+
+# Mautic staging: cron off and only test contacts.
+if docker ps --format '{{.Names}}' | grep -q '^meru-mautic-staging.*cron'; then fail "staging Mautic cron is running (off by default)"; fi
+if [ -n "${MERU_STAGING_CONTACT_CHECK:-}" ]; then   # TODO(owner): command printing the count of non-test contacts
+  n="$($MERU_STAGING_CONTACT_CHECK)"; [ "$n" = 0 ] || fail "$n non-test contacts in staging Mautic"
+fi
+echo "mail guard: ok"

@@ -1,48 +1,66 @@
-# Template: Meru STAGING as its own Compose project next to live on vultr1.
+# Meru STAGING override for deploy/vultr1/docker-compose.yml (copy into Meru as
+# deploy/vultr1/docker-compose.staging.yml). Always used with an explicit project name:
 #
-#   docker compose -p meru-staging --env-file .env.staging \
-#     -f docker-compose.yml -f docker-compose.staging.yml up -d
+#   docker compose -p meru-pipeline-staging \
+#     -f deploy/vultr1/docker-compose.yml -f deploy/vultr1/docker-compose.staging.yml \
+#     --env-file /opt/meru-staging/.env up -d
 #
-# The project name (-p meru-staging) gives staging its own containers, networks and named
-# volumes, so it can never reuse live's containers, data or the sendgw registry.
-# Fill the TODOs from Meru's real compose file; service names below are placeholders.
+# (stagedirector-remote does exactly this.) The project name gives staging its own containers
+# and named volumes. This file gives it its own network, ports, sendgw registry, KV namespace,
+# Mailgun webhook key and caps, so it can never reuse live's containers, data or registry.
+# NEVER run `docker compose down -v` without `-p meru-pipeline-staging`.
+#
+# Mail (owner decision): staging sends the same way as live (sendgw -> Mailgun/Gmail), but:
+#   * GATEWAY_RECIPIENT_ALLOWLIST is required: mail to anyone else is parked and logged by sendgw;
+#   * a small daily cap in staging's own domains.json (STAGING_DAILY_CAP, set there);
+#   * tagging: X-Stage: staging header + "[STAGING] " subject prefix. sendgw does NOT do this yet:
+#     TODO(Meru): add GATEWAY_STAGE_TAG support to sendgw before the first staging send.
 
-name: meru-staging
-
-x-staging-limits: &limits
+x-staging: &staging
   restart: unless-stopped
   mem_limit: ${STAGING_SERVICE_MEMORY:-384m}
+  memswap_limit: ${STAGING_SERVICE_MEMORY:-384m}
   cpus: ${STAGING_SERVICE_CPUS:-0.5}
   pids_limit: 256
+  labels:
+    stagedirector.stage: staging
+    backup.exclude: "true"          # keep staging out of live's backups (check the backup job honours it)
 
 services:
-  # TODO: one block per Meru service (dashboard, pipelined, sendgw, mautic, unsub/booking).
-  # Each gets the caps, staging-only ports bound to 127.0.0.1, and the mail sink below.
-  dashboard:
-    <<: *limits
+  pipelined:
+    <<: *staging
     ports: !override
-      - "127.0.0.1:${STAGING_DASHBOARD_PORT:-18080}:8080"   # TODO: real container port
+      - "127.0.0.1:${STAGING_PIPELINE_PORT:-58188}:58088"
     environment:
-      MERU_ENV: staging
+      DEPLOY_ENV: staging
+      DRY_RUN: ${DRY_RUN:-true}
+      CF_KV_NAMESPACE_ID: ${CF_KV_NAMESPACE_ID:?staging needs its OWN KV namespace id}
+      MAILGUN_WEBHOOK_SIGNING_KEY: ${MAILGUN_WEBHOOK_SIGNING_KEY:?staging needs its own Mailgun webhook key}
+      CONFIRM_BASE_URL: ${CONFIRM_BASE_URL:?set staging's confirm URL}
+      CALENDAR_ICS_URL: ""            # no calendar polling on staging
+      PUSHOVER_TOKEN: ""              # no owner phone alerts from staging
+      PUSHOVER_USER: ""
+      DISCORD_WEBHOOK_URL: ${STAGING_DISCORD_WEBHOOK_URL:-}
+      PIPELITE_URL: ""                # no CRM writes from staging
+    volumes: !override
+      - pipeline-data:/data
+      - ${STAGING_SENDGW_DIR:?set STAGING_SENDGW_DIR (staging's own sendgw registry folder)}:/etc/sendgw:ro
+    networks: !override [mautic-staging]
 
   sendgw:
-    <<: *limits
-    ports: !reset []
+    <<: *staging
+    ports: !override
+      - "127.0.0.1:${STAGING_SENDGW_ADMIN_PORT:-58195}:2580"
     environment:
-      MERU_ENV: staging
-      # MAIL DECISION (owner, still open). Default suggestion = catch-all:
-      # every message goes to the local Mailpit below; nothing leaves the box.
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      # Alternative = allowlist: real SMTP, but only to these addresses. TODO if chosen.
-      # MAIL_ALLOWLIST: "<you@example.com>"
+      DEPLOY_ENV: staging
+      GATEWAY_RECIPIENT_ALLOWLIST: ${GATEWAY_RECIPIENT_ALLOWLIST:?staging must have a recipient allowlist (owner test addresses)}
+      GATEWAY_STAGE_TAG: staging      # TODO(Meru): sendgw adds X-Stage + "[STAGING] " subject prefix when set
+    volumes: !override
+      - ${STAGING_SENDGW_DIR}:/etc/sendgw
+      - gateway-data:/data
+    networks: !override [mautic-staging]
 
-  # Catch-all inbox for staging mail. Web UI on 127.0.0.1 only (reach it over SSH/Tailscale).
-  mailpit:
-    image: axllent/mailpit:v1.21.8
-    <<: *limits
-    mem_limit: 128m
-    ports:
-      - "127.0.0.1:${STAGING_MAILPIT_PORT:-18025}:8025"
-
-# Live's volumes are never named here; staging's are prefixed meru-staging_ automatically.
+networks:
+  mautic-staging:
+    name: ${STAGING_MAUTIC_NETWORK:-meru-mautic-staging_default}   # created by the staging Mautic project
+    external: true

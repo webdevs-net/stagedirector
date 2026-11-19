@@ -26,6 +26,14 @@ There is no terminal (stdin is not a TTY). A command must never wait for input.
 
 Placeholders in `stagedirector.yml` commands: `{backup}`, `{commit}`, `{stage}`.
 
+## Where the job runs
+
+`runner: <label>` in `stagedirector.yml` = self-hosted runner with that label.
+`runner: github` = GitHub-hosted `ubuntu-latest`; if the environment has
+`TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` the job joins the tailnet first, and the variable
+`STAGEDIRECTOR_KNOWN_HOSTS` pins host keys. Used with `kits/ssh-compose` (forced-command SSH).
+The rules check always runs GitHub-hosted.
+
 ## Exit codes
 
 | Code | Meaning | Workflow does |
@@ -168,9 +176,12 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
      if the approver is also the one pressing the button. The dashboard can submit
      that review for the person (`POST …/actions/runs/{id}/pending_deployments` with
      their token), so it stays one press.
-   Required reviewers need a public repo or a paid plan (Team/Enterprise) for private
-   repos. Without it, step 5 is still enforced and the branch policy still applies
-   where available.
+   Plan check (2026-11-18): netdevs-net is a personal account on **GitHub Pro**. Per
+   GitHub's docs, Pro gives private repos environments, environment secrets and
+   deployment-branch rules, but **not required reviewers** (Enterprise only for private
+   repos). Not tested by creating one. So for Meru and Maria's Place the live lock is
+   step 5 (code-owner approval record) + environment secrets limited to `main`.
+   Separate keys per stage keep the live key out of staging jobs.
 8. Branch protection on the default branch, with CODEOWNERS review required for
    `CODEOWNERS`, `stagedirector.yml` and `.github/workflows/`, is what makes 1–7 hold.
    Set it up.

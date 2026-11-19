@@ -68,7 +68,8 @@ concurrency:
 jobs:
   gate:
     name: Check rules
-    runs-on: [self-hosted]
+    # GitHub-hosted: needs no host access, works for projects with no self-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       go: ${{ steps.gate.outputs.go }}
@@ -79,6 +80,7 @@ jobs:
       commit: ${{ steps.gate.outputs.commit }}
       action: ${{ steps.gate.outputs.action }}
       runner: ${{ steps.gate.outputs.runner }}
+      runs_on: ${{ steps.gate.outputs.runs_on }}
       environment: ${{ steps.gate.outputs.environment }}
       gated: ${{ steps.gate.outputs.gated }}
       approved_by: ${{ steps.gate.outputs.approved_by }}
@@ -260,6 +262,9 @@ jobs:
           out commit "$COMMIT"
           out action "$ACTION"
           out runner "$RUNNER"
+          # runner: github = GitHub-hosted job (reaches the host over Tailscale + SSH);
+          # any other label = self-hosted runner with that label.
+          if [ "$RUNNER" = github ]; then out runs_on '"ubuntu-latest"'; else out runs_on "$(jq -cn --arg l "$RUNNER" '["self-hosted", $l]')"; fi
           out environment "stagedirector-$STAGE"
           out gated "$GATED"
           out approved_by "$APPROVED_BY"
@@ -276,7 +281,7 @@ jobs:
     name: ${{ needs.gate.outputs.action }} ${{ needs.gate.outputs.stage }}
     needs: gate
     if: needs.gate.outputs.go == 'true'
-    runs-on: [self-hosted, "${{ needs.gate.outputs.runner }}"]
+    runs-on: ${{ fromJSON(needs.gate.outputs.runs_on) }}
     environment:
       name: ${{ needs.gate.outputs.environment }}
     timeout-minutes: 45
@@ -294,12 +299,30 @@ jobs:
       APPROVED_AT: ${{ needs.gate.outputs.approved_at }}
       REQUESTED_BY: ${{ needs.gate.outputs.requested_by }}
       ACTOR: ${{ github.actor }}
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
     steps:
       - name: Check out ${{ needs.gate.outputs.commit }}
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.gate.outputs.commit }}
           fetch-depth: 0
+
+      - name: Join the tailnet (only when the environment has Tailscale secrets)
+        if: env.TS_OAUTH_CLIENT_ID != ''
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Pin host keys (environment variable STAGEDIRECTOR_KNOWN_HOSTS)
+        if: vars.STAGEDIRECTOR_KNOWN_HOSTS != ''
+        env:
+          KNOWN_HOSTS: ${{ vars.STAGEDIRECTOR_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Load host SSH key (environment secret)
         env:
