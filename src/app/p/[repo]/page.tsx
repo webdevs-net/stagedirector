@@ -3,6 +3,7 @@ import { loadProject, type PageProps } from "@/components/load";
 import { timeAgo } from "@/components/status";
 import { BackLink, Button, ButtonLink, Card, Chevron, Icon, Page } from "@/components/ui";
 import { UpdateStagingButton } from "@/components/UpdateStagingButton";
+import { RunOverlay } from "@/components/runs/RunOverlay";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q } = await loadProject(params, searchParams);
@@ -41,6 +42,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
       </div>
 
       {middle && (
+        <RunOverlay repo={p.repo}>
         <Card aria-labelledby="work-title" className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="work-title" className="text-2xl font-extrabold">Everyday work</h2>
@@ -61,8 +63,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               {middle.url && <ButtonLink href={middle.url} className="mt-2.5 min-h-14 text-teal-ink">Open {middle.name.toLowerCase()}</ButtonLink>}
             </div>
           </div>
-          <UpdateStagingButton repo={p.repo} href={`${base}/updating${q}`} label={`Update ${middle.name.toLowerCase()} from ${p.config.branch}`} disabled={!!p.busy} />
+          <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from ${p.config.branch}`} />
         </Card>
+        </RunOverlay>
       )}
 
       <section aria-labelledby="changes-title" className="flex flex-col gap-3">
@@ -89,6 +92,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         ))}
       </section>
 
+      <RunOverlay repo={p.repo} stageIds={[last.id]}>
       <section aria-labelledby="live-title" className="flex flex-col gap-4 rounded-[28px] border-2 border-dashed border-[#c9d8ea] bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -146,6 +150,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           <a className="font-bold text-blue underline" href={`${base}?as=developer`}>developer</a>
         </p>
       </section>
+      </RunOverlay>
     </Page>
   );
 }

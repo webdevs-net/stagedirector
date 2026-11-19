@@ -28,3 +28,18 @@ summary { cursor: pointer; list-style: none; }
 summary::-webkit-details-marker { display: none; }
 details[open] > summary .chev { transform: rotate(180deg); }
 :focus-visible { outline: 3px solid #2563b8; outline-offset: 2px; }
+
+/* Run-in-progress feedback */
+@keyframes sd-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes sd-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+@keyframes sd-spin { to { transform: rotate(360deg); } }
+.run-sweep { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(37,99,184,.12) 50%, transparent 80%); animation: sd-sweep 2.2s ease-in-out infinite; }
+.run-strip { position: relative; overflow: hidden; height: 4px; border-radius: 2px; background: #e8f1fd; }
+.run-strip::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #2563b8, transparent); animation: sd-sweep 1.6s linear infinite; }
+.run-dot { animation: sd-pulse 1.4s ease-in-out infinite; }
+.run-spin { animation: sd-spin 3s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .run-sweep, .run-strip::after, .run-dot, .run-spin, .animate-spin { animation: none !important; }
+  .run-sweep { display: none; }
+  .run-strip::after { background: #2563b8; opacity: .5; }
+}

@@ -7,6 +7,16 @@ import { repoToSlug } from "@/lib/mock";
 import { StageBars } from "./StageBars";
 import { Chevron, Icon } from "./ui";
 import { HEALTH_LABEL, healthOf, timeAgo } from "./status";
+import { useRuns } from "./runs/RunsProvider";
+
+function RunningLabel({ stage }: { stage: string }) {
+  return (
+    <span className="flex items-center justify-end gap-2 text-sm font-bold text-blue">
+      <span className="run-dot h-2.5 w-2.5 rounded-full bg-blue" aria-hidden="true" />
+      Updating {stage.toLowerCase()}…
+    </span>
+  );
+}
 
 type Filter = "all" | "needs" | "starred";
 
@@ -14,6 +24,7 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [grouped, setGrouped] = useState(true);
+  const { runFor } = useRuns();
 
   const needs = projects.filter((p) => p.needsMe);
   const shown = useMemo(() => {
@@ -94,7 +105,14 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
                       <Icon name="star" size={18} className="text-[#d9822b]" />
                     </span>
                     <StageBars p={p} />
-                    <span className={`text-sm font-bold ${HEALTH_LABEL[h].color}`}>{HEALTH_LABEL[h].text(p)}</span>
+                    {runFor(p.repo) ? (
+                      <>
+                        <span className="run-strip" aria-hidden="true" />
+                        <span className="self-start"><RunningLabel stage={runFor(p.repo)!.stageName} /></span>
+                      </>
+                    ) : (
+                      <span className={`text-sm font-bold ${HEALTH_LABEL[h].color}`}>{HEALTH_LABEL[h].text(p)}</span>
+                    )}
                   </Link>
                 </li>
               );
@@ -128,7 +146,9 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
                           <span className="block text-sm text-muted">Live updated {timeAgo(live?.deployedAt ?? null)}</span>
                         </span>
                         <StageBars p={p} small />
-                        <span className={`w-[150px] text-right text-sm font-bold ${HEALTH_LABEL[h].color}`}>{HEALTH_LABEL[h].text(p)}</span>
+                        <span className="w-[150px]">
+                          {runFor(p.repo) ? <RunningLabel stage={runFor(p.repo)!.stageName} /> : <span className={`block text-right text-sm font-bold ${HEALTH_LABEL[h].color}`}>{HEALTH_LABEL[h].text(p)}</span>}
+                        </span>
                       </Link>
                     </li>
                   );

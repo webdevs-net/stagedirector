@@ -63,7 +63,7 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
                 <p className="text-soft">{e.note}</p>
                 <div className="flex flex-wrap gap-2.5">
                   {e.action === "push" && e.result === "passed" && (
-                    <ActionButton act="undo" repo={p.repo} arg={e.id} next={`${base}/updating?stage=${e.stageId}`} className="bg-amber-soft text-[#7a4800]">
+                    <ActionButton act="run" repo={p.repo} stageId={e.stageId ?? "staging"} kind="undo" className="bg-amber-soft text-[#7a4800]">
                       Undo this update
                     </ActionButton>
                   )}

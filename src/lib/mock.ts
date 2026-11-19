@@ -249,3 +249,79 @@ export async function getRunLog(): Promise<string[]> {
 export function repoToSlug(repo: string): string {
   return repo.replace("/", "~");
 }
+
+// ---- Runs (mock). The data layer replaces these with GitHub workflow-run polling. ----
+
+export type RunKind = "update" | "put-live" | "undo" | "clear-cache";
+
+export interface ActiveRun {
+  id: string;
+  repo: string;
+  projectName: string;
+  stageId: string;
+  stageName: string;
+  stageUrl?: string;
+  kind: RunKind;
+  startedAt: number;      // epoch ms
+  step: number;           // index into RUN_STEPS
+  steps: string[];
+  progress: number;       // 0..100
+  state: "running" | "passed" | "failed" | "stopped";
+  finishedAt: number | null;
+}
+
+export const RUN_STEPS = ["Checking what's changing", "Saving a backup", "Copying files", "Making sure the site still loads"];
+const RUN_MS = 20_000;
+
+const g = globalThis as unknown as { __sdRuns?: Map<string, ActiveRun> };
+const RUNS: Map<string, ActiveRun> = (g.__sdRuns ??= new Map());
+
+function tick(r: ActiveRun): ActiveRun {
+  if (r.state !== "running") return r;
+  const el = Date.now() - r.startedAt;
+  const progress = Math.min(100, Math.round((el / RUN_MS) * 100));
+  const step = Math.min(r.steps.length - 1, Math.floor((el / RUN_MS) * r.steps.length));
+  const done = el >= RUN_MS;
+  const fail = done && PROJECTS.find((p) => p.repo === r.repo)?.extras.failedCheck;
+  return Object.assign(r, { progress, step, state: done ? (fail ? "failed" : "passed") : "running", finishedAt: done ? r.startedAt + RUN_MS : null });
+}
+
+/** Runs that are going, or finished in the last minute. */
+export async function getActiveRuns(): Promise<ActiveRun[]> {
+  const out: ActiveRun[] = [];
+  for (const r of RUNS.values()) {
+    tick(r);
+    if (r.finishedAt && Date.now() - r.finishedAt > 60_000) RUNS.delete(r.id);
+    else out.push({ ...r });
+  }
+  return out;
+}
+
+export async function startRun(repo: string, stageId: string, kind: RunKind): Promise<ActiveRun | { error: string }> {
+  const p = PROJECTS.find((x) => x.repo === repo);
+  if (!p) return { error: "No such project" };
+  if ([...RUNS.values()].some((r) => r.repo === repo && tick(r).state === "running")) return { error: "Something is already running here" };
+  const stage = p.config.stages.find((s) => s.id === stageId) ?? p.config.stages[1];
+  const run: ActiveRun = {
+    id: `run-${Date.now()}`,
+    repo,
+    projectName: p.config.name,
+    stageId: stage.id,
+    stageName: stage.name,
+    stageUrl: stage.url,
+    kind,
+    startedAt: Date.now(),
+    step: 0,
+    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : RUN_STEPS,
+    progress: 0,
+    state: "running",
+    finishedAt: null,
+  };
+  RUNS.set(run.id, run);
+  return { ...run };
+}
+
+export async function stopRun(runId: string): Promise<void> {
+  const r = RUNS.get(runId);
+  if (r && tick(r).state === "running") Object.assign(r, { state: "stopped", finishedAt: Date.now() });
+}

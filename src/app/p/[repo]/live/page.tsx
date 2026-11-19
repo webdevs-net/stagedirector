@@ -9,7 +9,6 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
   const host = last.url ? new URL(last.url).host : last.name;
   const n = p.waiting.length;
   const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" ? { by: viewer.name, at: "just now" } : null);
-  const commit = p.stages[p.stages.length - 2]?.commit ?? "";
   const sync = p.stages[p.stages.length - 1]?.outOfSync ?? [];
   const canPush = viewer.role === "code-owner" && !!approval;
 
@@ -60,7 +59,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
 
         <div className="flex flex-col gap-2.5">
           {canPush ? (
-            <ActionButton act="putLive" repo={p.repo} arg={commit} next={`${base}/updating?stage=live`} className="min-h-[72px] rounded-[22px] bg-blue text-[21px] text-white shadow-[0_8px_20px_rgba(37,99,184,.3)]">
+            <ActionButton act="run" repo={p.repo} stageId={last.id} kind="put-live" next={`${base}${q}`} className="min-h-[72px] rounded-[22px] bg-blue text-[21px] text-white shadow-[0_8px_20px_rgba(37,99,184,.3)]">
               Yes, put it live
             </ActionButton>
           ) : (

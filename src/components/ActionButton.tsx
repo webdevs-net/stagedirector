@@ -1,24 +1,45 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition, type ReactNode } from "react";
-import * as actions from "@/app/actions";
+import { useState, useTransition, type ReactNode } from "react";
+import { approveForLive } from "@/app/actions";
+import type { RunKind } from "@/lib/mock";
+import { useRuns } from "./runs/RunsProvider";
 
-type Act = "approve" | "putLive" | "stop" | "undo";
+type Props = {
+  repo: string;
+  next?: string;
+  className?: string;
+  children: ReactNode;
+} & ({ act: "approve"; arg: string } | { act: "run"; stageId: string; kind: RunKind } | { act: "stop" });
 
-export function ActionButton({ act, repo, arg = "", next, className = "", children }: { act: Act; repo: string; arg?: string; next?: string; className?: string; children: ReactNode }) {
+export function ActionButton(props: Props) {
+  const { repo, next, className = "", children } = props;
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const { start, stop, runFor } = useRuns();
+  const [pending, startT] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const busy = props.act === "run" && !!runFor(repo);
+
   const run = async () => {
-    if (act === "approve") await actions.approveForLive(repo, arg);
-    if (act === "putLive") await actions.putLive(repo, arg);
-    if (act === "stop") await actions.stopRun(repo);
-    if (act === "undo") await actions.undoEvent(repo, arg);
+    setErr(null);
+    if (props.act === "approve") await approveForLive(repo, props.arg);
+    if (props.act === "run") {
+      const e = await start(repo, props.stageId, props.kind);
+      if (e) return setErr(e);
+    }
+    if (props.act === "stop") {
+      const r = runFor(repo);
+      if (r) await stop(r.id);
+    }
     if (next) router.push(next);
   };
   return (
-    <button type="button" disabled={pending} aria-busy={pending} onClick={() => start(run)} className={`inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-5 font-extrabold disabled:opacity-60 ${className}`}>
-      {pending ? "Working…" : children}
-    </button>
+    <>
+      <button type="button" disabled={pending || busy} aria-busy={pending} onClick={() => startT(run)} className={`inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-5 font-extrabold disabled:opacity-60 ${className}`}>
+        {pending ? "Starting…" : busy ? "Busy — one run at a time" : children}
+      </button>
+      {err && <p role="alert" className="font-bold text-red">{err}</p>}
+    </>
   );
 }

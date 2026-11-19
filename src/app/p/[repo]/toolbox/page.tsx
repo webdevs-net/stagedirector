@@ -1,15 +1,26 @@
 import Link from "next/link";
 import { loadProject, type PageProps } from "@/components/load";
 import { BackLink, Button, ButtonLink, Eyebrow, Icon, Page } from "@/components/ui";
+import { ToolTile } from "@/components/ToolTile";
+
+const svg = (d: React.ReactNode) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
+);
+const ICONS = {
+  cache: svg(<><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /></>),
+  backup: svg(<><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>),
+  copy: svg(<><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>),
+  plugin: svg(<><path d="M9 3v4M15 3v4" /><path d="M6 7h12v4a6 6 0 0 1-12 0z" /><path d="M12 17v4" /></>),
+};
 
 export default async function ToolboxPage({ params, searchParams }: PageProps) {
   const { project: p, base, q } = await loadProject(params, searchParams);
   const live = p.stages[p.stages.length - 1];
   const tiles = [
-    { t: "Clear cache", d: "Show the newest version", on: !!p.config.tools?.clearCache },
-    { t: "Save a backup", d: "Whole site, right now", on: true },
-    { t: "Copy live to staging", d: "Real pages and photos", on: p.config.stages.length > 2 },
-    { t: "Update plugins", d: "Staging first, then live", on: p.config.kind?.startsWith("WordPress") ?? false, badge: 3 },
+    { t: "Clear cache", d: "Show the newest version", on: !!p.config.tools?.clearCache, icon: ICONS.cache, kind: "clear-cache" as const },
+    { t: "Save a backup", d: "Whole site, right now", on: true, icon: ICONS.backup },
+    { t: "Copy live to staging", d: "Real pages and photos", on: p.config.stages.length > 2, icon: ICONS.copy },
+    { t: "Update plugins", d: "Staging first, then live", on: p.config.kind?.startsWith("WordPress") ?? false, badge: 3, icon: ICONS.plugin },
   ].filter((x) => x.on);
 
   return (
@@ -21,11 +32,7 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
         <Eyebrow><span id="do-title">DO SOMETHING</span></Eyebrow>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {tiles.map((x) => (
-            <button key={x.t} type="button" className="relative flex min-h-[120px] flex-col items-start justify-end gap-1 rounded-3xl bg-white p-5 text-left shadow-[0_4px_16px_rgba(30,43,58,.06)] hover:bg-blue-soft">
-              {x.badge && <span className="absolute right-4 top-4 rounded-full bg-blue px-2.5 text-sm font-extrabold text-white" aria-label={`${x.badge} waiting`}>{x.badge}</span>}
-              <span className="text-lg font-extrabold">{x.t}</span>
-              <span className="text-[15px] text-muted">{x.d}</span>
-            </button>
+            <ToolTile key={x.t} repo={p.repo} stageId={p.config.stages[p.config.stages.length - 1].id} kind={x.kind} title={x.t} detail={x.d} icon={x.icon} badge={x.badge} />
           ))}
         </div>
       </section>
