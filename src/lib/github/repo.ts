@@ -185,6 +185,20 @@ function plainSummary(body: string | null | undefined, title: string): string {
   return (line ?? title).slice(0, 240);
 }
 
+// Which PRs a commit came from hardly ever changes once merged, so remember it (10 min)
+// instead of asking GitHub again for every commit on every read.
+type PrList = Awaited<ReturnType<Octokit["rest"]["repos"]["listPullRequestsAssociatedWithCommit"]>>["data"];
+const prMemo = new Map<string, { at: number; prs: PrList }>();
+async function prsForCommit(gh: Octokit, repo: string, sha: string): Promise<PrList> {
+  const key = `${repo}@${sha}`;
+  const hit = prMemo.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.prs;
+  const { data } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: sha });
+  if (prMemo.size > 5000) prMemo.clear();
+  prMemo.set(key, { at: Date.now(), prs: data });
+  return data;
+}
+
 /**
  * What is in `to` but not yet in `from` (e.g. staging vs live): merged PRs, plus
  * commits made straight to the branch with no PR. `from` null = the stage was
@@ -203,8 +217,10 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
   const seen = new Map<number, Change>();
   const direct: Change[] = [];
   const bodies = new Map<number, { body: string | null; sha: string }>();
-  for (const c of commits) {
-    const { data: prs } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: c.sha });
+  // One request per commit, all at once (they were sequential: ~8 s for 50 commits). Order is kept below.
+  const prLists = await Promise.all(commits.map((c) => prsForCommit(gh, repo, c.sha)));
+  for (const [i, c] of commits.entries()) {
+    const prs = prLists[i];
     const merged = prs.filter((pr) => pr.merged_at);
     if (merged.length === 0 && !/^Merge (pull request|branch)/.test(c.commit.message)) {
       const [title, ...rest] = c.commit.message.split("\n");

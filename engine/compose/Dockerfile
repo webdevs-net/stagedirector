@@ -21,7 +21,7 @@ RUN if [ -n "$APT_MIRROR" ]; then \
 # hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      openssh-client rsync git jq curl ca-certificates python3 python3-yaml gnupg tini \
+      openssh-client rsync git jq curl ca-certificates python3 python3-yaml gnupg tini socat \
  && install -d -m 755 /etc/apt/keyrings \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli.gpg \
  && echo "deb [signed-by=/etc/apt/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \

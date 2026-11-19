@@ -6,10 +6,32 @@ import { EtagCache } from "./etag";
 /** Shared across requests so polls reuse ETags (304s are free against the rate limit). */
 export const etagCache = new EtagCache();
 
+/** GitHub's hourly API budget for our token, from the headers of the latest response. */
+export const rateLimit: { remaining: number | null; resetAt: number | null } = { remaining: null, resetAt: null };
+
+function noteLimit(headers: Record<string, unknown> | undefined) {
+  const rem = Number(headers?.["x-ratelimit-remaining"]);
+  const reset = Number(headers?.["x-ratelimit-reset"]);
+  if (Number.isFinite(rem)) rateLimit.remaining = rem;
+  if (Number.isFinite(reset)) rateLimit.resetAt = reset * 1000;
+}
+
+/** True while the budget is nearly gone: background refreshes pause until it resets. */
+export function rateLimited(): boolean {
+  return rateLimit.remaining !== null && rateLimit.remaining < 100 && (rateLimit.resetAt ?? 0) > Date.now();
+}
+
 function withEtags(gh: Octokit): Octokit {
-  gh.hook.wrap("request", (request, options) => {
+  gh.hook.wrap("request", async (request, options) => {
     const { method, url } = gh.request.endpoint(options as never) as { method: string; url: string };
-    return etagCache.wrap(request as never, options as never, `${method} ${url}`) as never;
+    try {
+      const res = (await etagCache.wrap(request as never, options as never, `${method} ${url}`)) as { headers?: Record<string, unknown> };
+      noteLimit(res.headers);
+      return res as never;
+    } catch (e) {
+      noteLimit((e as { response?: { headers?: Record<string, unknown> } }).response?.headers);
+      throw e;
+    }
   });
   return gh;
 }

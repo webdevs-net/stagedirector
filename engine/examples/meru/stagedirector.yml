@@ -17,7 +17,8 @@ stages:
     deploy: deploy/stagedirector.sh staging
     rollback: deploy/stagedirector.sh rollback staging {backup}
     smokeTest: [/healthz]                   # TODO: dashboard login, unsub and booking pages
-    runner: github                          # GitHub-hosted job -> Tailscale -> forced-command SSH
+    runner: meru-staging                    # ephemeral runner on vultr1 -> deploy broker (README)
+    # runner: github                        # alternative: GitHub-hosted job -> Tailscale -> forced-command SSH
   - id: live
     name: Live
     url: https://<live-host>/
@@ -26,4 +27,4 @@ stages:
     deploy: deploy/stagedirector.sh live
     rollback: deploy/stagedirector.sh rollback live {backup}
     smokeTest: [/healthz]
-    runner: github
+    runner: meru-live

@@ -2,6 +2,19 @@
 // (see .env.example) it reads real projects through src/lib/github; without
 // them it serves the built-in demo data from ./mock so the app still runs.
 import "server-only";
+import { revalidateAll, swr } from "./github/swr";
+import { rateLimit, rateLimited } from "./github/client";
+import { headers } from "next/headers";
+
+/**
+ * In-app navigation and background refreshes (RSC requests) are answered from the
+ * cache at once. A full page load (reload, typed address) waits up to 2 s for fresh data.
+ */
+async function waitForFresh(): Promise<number> {
+  const h = await headers().catch(() => null);
+  // Next strips its own RSC headers before headers(); the browser's Sec-Fetch-Dest says "document" only for a full load.
+  return h?.get("sec-fetch-dest") === "document" ? 2_000 : 0;
+}
 import * as mock from "./mock";
 import * as gh from "./github";
 import * as runs from "./github/runs";
@@ -29,10 +42,10 @@ const NO_EXTRAS: mock.ProjectExtras = {
 };
 
 async function withRequests(v: mock.ProjectView, login: string | null): Promise<mock.ProjectView> {
-  const requests = await gh.openRequests(v.repo).catch(() => []);
+  const requests = await swr(`requests:${v.repo}`, 10_000, () => gh.openRequests(v.repo)).catch(() => []);
   if (!requests.length) return v;
   // "Waiting on you" when the viewer is someone who may OK at least one of them.
-  const role = login ? await gh.getRoleFor(v.repo, login).catch(() => "viewer" as const) : "viewer";
+  const role = login ? await swr(`role:${v.repo}:${login}`, 60_000, () => gh.getRoleFor(v.repo, login)).catch(() => "viewer" as const) : "viewer";
   const mine = requests.some((r) => mayAnswer(v.config, r.stageId, login ?? "", role).ok);
   return { ...v, needsMe: v.needsMe || (!!login && mine), extras: { ...v.extras, requests } };
 }
@@ -59,29 +72,51 @@ export async function getViewer(): Promise<mock.Viewer> {
 export async function getViewerFor(repo: string): Promise<mock.Viewer> {
   if (!live()) return mock.getViewer();
   const login = await gh.currentLogin();
-  const role = await gh.getRoleFor(repo, login);
+  // Display only (buttons shown); every action checks the role again, fresh.
+  const role = await swr(`role:${repo}:${login}`, 60_000, () => gh.getRoleFor(repo, login));
   return { login: login ?? "guest", name: login ?? "Guest", role };
 }
 
 export async function listProjects(): Promise<mock.ProjectView[]> {
   if (!live()) return mock.listProjects();
   const login = await gh.currentLogin();
-  return Promise.all((await gh.getProjects(login)).map((p) => withRequests(toView(p), login)));
+  return Promise.all((await gh.getProjects(login, await waitForFresh())).map((p) => withRequests(toView(p), login)));
 }
 
 export async function getProject(repoSlug: string): Promise<mock.ProjectView | null> {
   if (!live()) return mock.getProject(repoSlug);
   const login = await gh.currentLogin();
-  const p = await gh.getProject(slugToRepo(repoSlug), login);
+  const wait = await waitForFresh();
+  const p = await gh.getProject(slugToRepo(repoSlug), login, wait);
   if (!p) return null;
   const v = await withRequests(toView(p), login);
-  const a = await gh.currentApproval(p.repo).catch(() => null);
+  const a = await gh.currentApproval(p.repo, { cached: true, waitMs: wait }).catch(() => null); // display only; actions re-check fresh
   return a ? { ...v, extras: { ...v.extras, approval: { by: a.by, at: new Date(a.at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) } } } : v;
 }
 
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   if (!live()) return mock.getActivity(repoSlug);
   return gh.getActivity(slugToRepo(repoSlug));
+}
+
+/** When GitHub's hourly limit is nearly used up: the time it resets (epoch ms), else null. */
+export function githubLimitedUntil(): number | null {
+  return live() && rateLimited() ? rateLimit.resetAt : null;
+}
+
+/**
+ * How often open pages re-read GitHub in the background, in seconds.
+ * STAGEDIRECTOR_POLL_SECONDS (default 60, minimum 15). Only a visible page polls; the server never calls GitHub on its own. Clicks and the
+ * Refresh button still update at once; a run that is going is followed every 2 s.
+ */
+export function pollSeconds(): number {
+  const n = Number(process.env.STAGEDIRECTOR_POLL_SECONDS);
+  return Number.isFinite(n) && n > 0 ? Math.max(15, n) : 60;
+}
+
+/** Timed poll / Refresh button: fetch fresh GitHub data into the cache before the page re-renders. */
+export async function refreshFromGithub(): Promise<void> {
+  if (live()) await revalidateAll();
 }
 
 export function isDemo(): boolean {

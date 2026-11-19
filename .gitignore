@@ -48,3 +48,6 @@ stagedirector.local.json
 /playwright-report/
 /test-results/
 /.next-sandbox/
+
+# saved copy of GitHub data (src/lib/github/swr.ts)
+/.stagedirector-cache/
