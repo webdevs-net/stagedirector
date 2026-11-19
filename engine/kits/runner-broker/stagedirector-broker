@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#
+# Stage Director deploy broker. Runs ON the host, started by systemd for each connection to
+# /run/stagedirector/<project>-<stage>.sock (stagedirector-broker@.socket, Accept=yes).
+# NOT RUN YET; the owner installs it by hand.
+#
+# The socket is the stage's only door: whoever can connect (the runner container for that one
+# stage, via the socket's group) may send ONE line, the same commands as the SSH forced command:
+#     deploy <40-char sha> [github-login]
+#     rollback <backup id>
+#     status
+# Project and stage come from the systemd instance name, never from the caller. The real work
+# is done by stagedirector-remote (kits/ssh-compose), so SSH and the broker behave the same.
+#
+# The socket carries no exit code, so the last line written is always
+#     STAGEDIRECTOR_EXIT=<code>
+# (0 ok, 2 refused, 1 failed: engine/contract.md). The client turns it back into an exit code.
+
+set -uo pipefail
+INSTANCE="${1:-}"
+[[ "$INSTANCE" =~ ^([a-z0-9-]+)-(staging|live)$ ]] || { echo "bad instance '$INSTANCE'"; echo "STAGEDIRECTOR_EXIT=2"; exit 0; }
+PROJECT="${BASH_REMATCH[1]}"; STAGE="${BASH_REMATCH[2]}"
+
+# One line, short, read within 10 s. Anything else is refused before stagedirector-remote runs.
+line=""
+IFS= read -r -t 10 -n 300 line || true
+line="${line%$'\r'}"
+if ! [[ "$line" =~ ^(status|deploy\ [0-9a-f]{40}(\ [A-Za-z0-9][A-Za-z0-9:._-]{0,79})?|rollback\ [A-Za-z0-9._-]{1,80})$ ]]; then
+  echo "ERROR: refused: expected 'deploy <sha> [login]', 'rollback <id>' or 'status'"
+  echo "STAGEDIRECTOR_EXIT=2"
+  exit 0
+fi
+
+logger -t stagedirector-broker "$PROJECT $STAGE: $line"
+SSH_ORIGINAL_COMMAND="$line" /usr/local/bin/stagedirector-remote "$PROJECT" "$STAGE" 2>&1
+rc=$?
+echo "STAGEDIRECTOR_EXIT=$rc"
+exit 0

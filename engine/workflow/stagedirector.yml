@@ -340,9 +340,14 @@ jobs:
       - name: Load host SSH key (environment secret)
         env:
           SSH_KEY: ${{ secrets.STAGEDIRECTOR_SSH_KEY }}
+          RUNNER_LABEL: ${{ needs.gate.outputs.runner }}
         run: |
           set -euo pipefail
-          [ -n "$SSH_KEY" ] || { echo "::error::Environment stagedirector-$STAGE has no STAGEDIRECTOR_SSH_KEY secret."; exit 1; }
+          if [ -z "$SSH_KEY" ]; then
+            # Self-hosted runners that talk to a local deploy broker need no SSH key.
+            if [ "$RUNNER_LABEL" != github ]; then echo "No STAGEDIRECTOR_SSH_KEY: self-hosted runner, skipping ssh-agent."; exit 0; fi
+            echo "::error::Environment stagedirector-$STAGE has no STAGEDIRECTOR_SSH_KEY secret."; exit 1
+          fi
           [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::Checked-out commit is not $COMMIT."; exit 1; }
           SOCK="$RUNNER_TEMP/sd-agent.sock"
           eval "$(ssh-agent -a "$SOCK" -s)" >/dev/null

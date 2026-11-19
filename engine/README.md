@@ -10,6 +10,8 @@ GitHub records.
 | `runner/setup-ovh1.sh`, `runner/README.md` | self-hosted runner on ovh1 (**not run**; for the owner) |
 | `compose/` | portable Docker Compose bundle: runner + ssh/rsync/gh/Wrangler/docker CLI (**not run**) |
 | `kits/ssh-compose/` | forced-command SSH deploy for Docker Compose hosts (`stagedirector-remote`), used with `runner: github` + Tailscale (**not installed**) |
+| `kits/runner-broker/` | quiet pull-only deploys: timer starts an ephemeral runner only when a job is queued; runner talks to a per-stage deploy broker socket, never Docker (**not installed**) |
+| `compose/docker-compose.ephemeral.yml` | the one-job runner container used by `kits/runner-broker` |
 | `examples/meru/` | **Meru (priority)**: staging next to live on vultr1, test-contacts-only mail, guard, contact scrub, files to copy |
 | `patches/mariasplace-deploy.patch`, `.md` | Maria's Place `scripts/deploy.sh` changes (**not applied**) |
 
