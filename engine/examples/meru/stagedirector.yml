@@ -11,7 +11,7 @@ stages:
     trigger: manual
   - id: staging
     name: Staging
-    url: https://<staging-host>/            # TODO(owner): staging hostname; Cloudflare Access in front?
+    url: https://staging.webdevsteam.com/    # behind Cloudflare Access (sign-in page); see README
     pushers: developers
     trigger: auto
     deploy: deploy/stagedirector.sh staging
