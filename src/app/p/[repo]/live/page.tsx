@@ -2,14 +2,15 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { Chevron, Icon } from "@/components/ui";
-import { isDemo } from "@/lib/data";
+import { dataIsLive } from "@/lib/data";
 
 export default async function PutLivePage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
   const last = p.config.stages[p.config.stages.length - 1];
   const host = last.url ? new URL(last.url).host : last.name;
   const n = p.waiting.length;
-  const approval = p.extras.approval ?? (isDemo() && sp.approved === "1" && viewer.role === "code-owner" ? { by: viewer.name, at: "just now" } : null);
+  // In demo mode ?approved=1 stands in for the stored approval; with GitHub only a real approval counts.
+  const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" && !(await dataIsLive()) ? { by: viewer.name, at: "just now" } : null);
   const sync = p.stages[p.stages.length - 1]?.outOfSync ?? [];
   const canPush = viewer.role === "code-owner" && !!approval;
 
@@ -24,7 +25,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
 
         <ul className="flex flex-col gap-2 rounded-[20px] bg-bg px-5 py-4 text-[17px]">
           {p.waiting.map((c) => (
-            <li key={c.pr} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
+            <li key={c.pr || c.commit} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
           ))}
         </ul>
 
@@ -57,6 +58,12 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
             <Icon name="lock" /> <span className="font-bold">Not approved yet. A code owner must review and approve first.</span>
           </div>
         )}
+
+        <p className={`rounded-[18px] px-4 py-3 text-[15px] ${p.config.noDowntime ? "bg-teal-soft text-teal-ink" : "bg-chip text-soft"}`}>
+          {p.config.noDowntime
+            ? "No-downtime switch: the new version is prepared next to the old one, then swapped in one step. Visitors never see a half-updated site, and Undo takes seconds."
+            : "Normal update: files are copied over the running site, so it can be slow for a moment. Undo restores the backup."}
+        </p>
 
         <div className="flex flex-col gap-2.5">
           {canPush ? (

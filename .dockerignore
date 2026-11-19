@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.claude
+.env*
+!.env.example
+docs/screenshots
+engine
+*.pem
+coverage

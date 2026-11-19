@@ -22,6 +22,12 @@ No runner lives on vultr1 and no job gets the Docker socket, so a job can only a
 Meru's existing pattern (`.github/workflows/deploy.yml` → Tailscale → `remote-deploy.sh`), which
 stays switched off.
 
+> **Tailscale SSH caveat:** if Tailscale SSH (`tailscale up --ssh`) is on for vultr1, it answers
+> tailnet connections itself and **ignores `authorized_keys`, including the forced command**. A
+> GitHub job that joined the tailnet would then not be locked to `stagedirector-remote`. Turn
+> Tailscale SSH off for vultr1 (or have the job reach `sshd` on a non-Tailscale path) before
+> installing the stage keys, and test that a stage key cannot get a shell.
+
 ## Staging, isolated from live
 
 | | Live | Staging |

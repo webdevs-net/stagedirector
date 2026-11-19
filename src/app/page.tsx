@@ -1,5 +1,5 @@
 import { ProjectBrowser } from "@/components/ProjectBrowser";
-import { Button, Icon, Page } from "@/components/ui";
+import { Button, ButtonLink, Icon, Page } from "@/components/ui";
 import { getViewer, isDemo, listProjects } from "@/lib/data";
 
 export default async function HomePage() {
@@ -16,7 +16,10 @@ export default async function HomePage() {
             <h1 className="text-[30px] font-extrabold">Your projects <span className="text-lg font-bold text-muted">· {projects.length}</span></h1>
           </div>
         </div>
-        <Button><Icon name="plus" size={18} /> Add a project</Button>
+        <div className="flex flex-wrap gap-2.5">
+          <ButtonLink href="/activity">Activity record</ButtonLink>
+          <Button><Icon name="plus" size={18} /> Add a project</Button>
+        </div>
       </header>
       <ProjectBrowser projects={projects} />
       <details>

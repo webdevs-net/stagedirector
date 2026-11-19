@@ -6,7 +6,7 @@ import { getActivity } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
 
 const VERB: Record<ActivityEvent["action"], string> = {
-  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", "clear-cache": "cache cleared", check: "checked",
+  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", snapshot: "backed up", check: "checked",
 };
 
 function who(actor: string) {
@@ -17,7 +17,7 @@ function who(actor: string) {
 
 function dayOf(iso: string) {
   const d = new Date(iso);
-  const today = new Date("2026-11-18T15:22:00-08:00");
+  const today = new Date();
   const diff = Math.floor((today.setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
   if (diff <= 0) return "TODAY";
   if (diff === 1) return "YESTERDAY";
@@ -36,7 +36,13 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
   return (
     <Page width="max-w-[860px]">
       <BackLink href={`${base}${q}`} label={p.config.name} />
-      <h1 className="text-3xl font-extrabold">History</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-3xl font-extrabold">History</h1>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/activity?repo=${encodeURIComponent(p.repo)}`} className="inline-flex min-h-[52px] items-center rounded-2xl bg-white px-5 font-extrabold">Full record &amp; filters</Link>
+          <a href={`/api/activity?repo=${encodeURIComponent(p.repo)}&format=csv`} download className="inline-flex min-h-[52px] items-center rounded-2xl bg-teal px-5 font-extrabold text-white">Download CSV</a>
+        </div>
+      </div>
       <nav aria-label="Filter" className="flex flex-wrap gap-2">
         {[{ id: "all", name: "Everything" }, ...p.config.stages.slice(1).reverse()].map((s) => (
           <Link key={s.id} href={`${base}/history?f=${s.id}${extra}`} aria-current={filter === s.id ? "page" : undefined}
@@ -64,7 +70,7 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
                 <div className="flex flex-wrap gap-2.5">
                   {e.action === "push" && e.result === "passed" && (
                     <ActionButton act="run" repo={p.repo} stageId={e.stageId ?? "staging"} kind="undo" className="bg-amber-soft text-[#7a4800]">
-                      Undo this update
+                      {p.config.noDowntime ? "Undo this update (instant switch back)" : "Undo this update"}
                     </ActionButton>
                   )}
                   <ButtonLink href={`${base}/updating?stage=${e.stageId ?? "staging"}`} tone="plain">See the log</ButtonLink>

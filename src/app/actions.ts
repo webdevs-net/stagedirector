@@ -15,10 +15,28 @@ export async function listRunsAction() {
 }
 
 export async function stopRunAction(runId: string) {
-  await data.stopRun(runId);
+  return data.stopRun(runId);
 }
 
-export async function approveForLive(repo: string, commit: string): Promise<{ ok: boolean }> {
-  console.log("[stub] approve", repo, commit);
-  return { ok: true };
+export async function runLogAction(repoSlug: string, stageId: string) {
+  return data.getRunLog(repoSlug, stageId);
+}
+
+export async function approveForLive(repo: string, commit: string): Promise<{ ok: boolean; error?: string }> {
+  const error = await data.approve(repo, commit);
+  return error ? { ok: false, error } : { ok: true };
+}
+
+export async function pinAction(repo: string, stageId: string, pin: boolean) {
+  return data.pinStage(repo, stageId, pin);
+}
+
+export async function runChecksAction(repoSlug: string, stageId: string, when: "before" | "after") {
+  return data.runStageChecks(repoSlug, stageId, when);
+}
+
+// Server actions are only called from the dashboard's own pages by a signed-in
+// person (Claude sessions use the HTTP API with X-Stagedirector-Agent: claude).
+export async function answerRequestAction(repo: string, requestId: string, ok: boolean) {
+  return data.answerRequest(repo, requestId, ok);
 }

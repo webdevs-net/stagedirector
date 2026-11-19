@@ -1,9 +1,11 @@
 import "server-only";
 import type { Octokit } from "@octokit/rest";
-import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, Role, StageStatus } from "@/lib/types";
+import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, PushRequest, Role, StageStatus } from "@/lib/types";
 import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
-import { configuredRepos, getOctokit, selfLogin, splitRepo } from "./client";
-import { changesBetween, readConfig, recentRuns, roleSource, stageStatuses, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
+import { configuredRepos, dashboardIsApp, getOctokit, personOctokit, selfLogin, splitRepo } from "./client";
+import * as authMod from "@/lib/auth/auth";
+import { changesBetween, defaultBranchHead, readConfig, recentRuns, resolveRunStage, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 
@@ -30,7 +32,7 @@ async function loadConfig(gh: Octokit, repo: string): Promise<ProjectConfig | nu
 async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login: string | null): Promise<ProjectSummary> {
   const store = storeFor(gh);
   const [stages, runs] = await Promise.all([
-    stageStatuses(gh, repo, config, (id) => store.pinned(repo, id)),
+    stageStatuses(gh, repo, config, (id) => pinRefExists(gh, repo, id).catch(() => store.pinned(repo, id))),
     recentRuns(gh, repo, 10),
   ]);
   const n = stages.length;
@@ -50,7 +52,7 @@ async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login
     stages,
     waiting,
     needsMe,
-    busy: active ? { by: active.by ?? "someone", stageId: active.stageId ?? "" } : null,
+    busy: active ? { by: active.by ?? "someone", stageId: resolveRunStage(config, active.stageId) ?? "" } : null,
   };
 }
 
@@ -84,7 +86,8 @@ export async function getActivity(repo: string, limit = 50): Promise<ActivityEve
     return [...extra, ...(sampleActivity[repo] ?? [])].slice(0, limit);
   }
   if (!configuredRepos().includes(repo)) return [];
-  const [records, runs] = await Promise.all([storeFor(gh).list(repo, limit), recentRuns(gh, repo, limit)]);
+  const [records, rawRuns, config] = await Promise.all([storeFor(gh).list(repo, limit), recentRuns(gh, repo, limit), loadConfig(gh, repo)]);
+  const runs = rawRuns.map((r) => ({ ...r, stageId: config ? resolveRunStage(config, r.stageId) : r.stageId }));
   const fromRuns: ActivityEvent[] = runs.map((r) => ({
     id: `run-${r.id}`,
     at: r.startedAt,
@@ -119,6 +122,8 @@ export type ActionInput = {
   commit?: string;
   runId?: number;
   note?: string;
+  /** Id of the Claude request this action answers. */
+  answers?: string;
 };
 
 export type ActionResult =
@@ -131,6 +136,7 @@ const RUN_ACTIONS: Record<Exclude<StageAction, "approve" | "stop">, RunAction> =
   pin: "pin",
   unpin: "unpin",
   "clear-cache": "clear-cache",
+  snapshot: "snapshot",
 };
 const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   deploy: "push",
@@ -138,6 +144,7 @@ const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   pin: "pin",
   unpin: "unpin",
   "clear-cache": "clear-cache",
+  snapshot: "snapshot",
   stop: "stop",
   approve: "approve",
 };
@@ -160,6 +167,11 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   const role = await getRoleFor(input.repo, person);
   const approval: Approval | null = await store.latestApproval(input.repo, input.stageId);
 
+  // "Update staging" sends no commit: take what is on the stage before (or the branch head when that is local).
+  if (input.action === "deploy" && !input.commit) {
+    input = { ...input, commit: prev?.commit ?? (gh ? (await defaultBranchHead(gh, input.repo, config.branch).catch(() => null)) ?? undefined : undefined) };
+  }
+
   if (input.commit && !/^[0-9a-f]{40}$/.test(input.commit)) {
     return { ok: false, status: 400, error: "commit must be a full 40-character SHA" };
   }
@@ -173,23 +185,43 @@ export async function performAction(actor: string, input: ActionInput): Promise<
     commit: input.commit,
     previousStageCommit: prev?.commit ?? null,
     approval,
+    pinned: stages[idx].pinned,
   });
   if (!decision.allowed) return { ok: false, status: 403, error: decision.reason };
 
   const at = new Date().toISOString();
-  const base = { at, actor, stageId: input.stageId, commit: input.commit, note: input.note };
+  const base = { at, actor, stageId: input.stageId, commit: input.commit, note: input.note, ...(input.answers ? { answers: input.answers } : {}) };
 
   if (decision.recordAs === "request") {
     const event = await store.append(input.repo, {
       ...base,
       action: "request",
+      wants: input.action === "stop" ? undefined : input.action,
+      commit: input.commit ?? (input.action === "deploy" || input.action === "approve" ? prev?.commit ?? undefined : undefined),
       note: `asks to ${input.action}${input.note ? `: ${input.note}` : ""}`,
     });
     return { ok: true, recordedAs: "request", event };
   }
 
+  // GitHub must see the person for code-owner stages (the engine checks who made the approval
+  // and who started the run). Use their own token; the dashboard's identity only when it is
+  // itself a person's token (local testing).
+  const codeOwnerStage = config.stages[idx].pushers === "code-owners";
+  const personToken = codeOwnerStage ? await (authMod.currentGithubToken?.() ?? null) : null;
+  const asPerson = personToken ? personOctokit(personToken) : !dashboardIsApp() ? gh : null;
+  if (codeOwnerStage && !asPerson && gh && (input.action === "approve" || input.action === "deploy" || input.action === "rollback")) {
+    return { ok: false, status: 401, error: `Sign out and in again so Stage Director can act as you on ${config.stages[idx].name} (GitHub only accepts it from you, not from the dashboard)` };
+  }
+
   if (input.action === "approve") {
     const a: Approval = { commit: input.commit!, stageId: input.stageId, by: actor, at };
+    // The record the engine's live gate checks (engine/contract.md): a commit status made by the code owner.
+    if (asPerson) {
+      await asPerson.rest.repos.createCommitStatus({
+        ...splitRepo(input.repo), sha: input.commit!, state: "success",
+        context: `stagedirector/approval/${input.stageId}`, description: `Approved in Stage Director by ${actor}`.slice(0, 140),
+      });
+    }
     const event = await store.append(input.repo, { ...base, action: "approve" }, a);
     return { ok: true, recordedAs: "action", event };
   }
@@ -207,9 +239,14 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   }
 
   if (!gh) return { ok: false, status: 503, error: "GitHub is not connected (sample mode)" };
-  const commit = input.commit ?? stages[idx].commit;
+  let commit = input.commit ?? stages[idx].commit;
+  // A backup or a cache clear does not move code, so it needs no record of what is on the stage:
+  // the workflow only wants a commit to check out its scripts. Use the source branch's tip.
+  if (!commit && (input.action === "snapshot" || input.action === "clear-cache")) {
+    commit = (await gh.rest.repos.getBranch({ ...splitRepo(input.repo), branch: config.branch })).data.commit.sha;
+  }
   if (!commit) return { ok: false, status: 400, error: "nothing on that stage yet" };
-  await startRun(gh, input.repo, config.branch, {
+  await startRun(codeOwnerStage && asPerson ? asPerson : gh, input.repo, config.branch, {
     stage: input.stageId,
     commit,
     action: RUN_ACTIONS[input.action as keyof typeof RUN_ACTIONS],
@@ -219,48 +256,58 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   return { ok: true, recordedAs: "action", event };
 }
 
-export interface LiveRun {
-  id: number; repo: string; projectName: string; stageId: string; stageName: string; stageUrl?: string;
-  action: string | null; state: "queued" | "running" | "passed" | "failed" | "stopped"; startedAt: string; url: string;
-}
-
-/** Stage Director workflow runs that are going, or ended in the last minute, across configured repos. */
-export async function getLiveRuns(): Promise<LiveRun[]> {
-  const gh = getOctokit();
-  if (!gh) return [];
-  const out: LiveRun[] = [];
-  await Promise.all(
-    configuredRepos().map(async (repo) => {
-      const config = await loadConfig(gh, repo);
-      if (!config) return;
-      const runs = await recentRuns(gh, repo, 5).catch(() => []);
-      for (const r of runs) {
-        const going = r.state === "running" || r.state === "queued";
-        const age = Date.now() - Date.parse(r.startedAt);
-        // Show runs that are going (started in the last hour), or finished runs that started in the last 3 minutes.
-        if (going ? age > 60 * 60_000 : age > 3 * 60_000) continue;
-        const stage = config.stages.find((s) => s.id === r.stageId);
-        out.push({
-          id: r.id, repo, projectName: config.name, stageId: r.stageId ?? "", stageName: stage?.name ?? r.stageId ?? "?", stageUrl: stage?.url,
-          action: r.action, state: r.state === "undone" ? "failed" : r.state, startedAt: r.startedAt, url: r.url,
-        });
-      }
-    }),
-  );
-  return out;
-}
-
-/** Log of the newest run for a stage (lines), or null. */
-export async function getLatestRunLog(repo: string, stageId: string): Promise<{ lines: string[]; url: string } | null> {
-  const gh = getOctokit();
-  if (!gh || !configuredRepos().includes(repo)) return null;
-  const run = (await recentRuns(gh, repo, 20)).find((r) => r.stageId === stageId);
-  if (!run) return null;
-  return { lines: (await runLog(gh, repo, run.id)).split("\n").slice(-200), url: run.url };
-}
-
 export async function getRunLog(repo: string, runId: number): Promise<string | null> {
   const gh = getOctokit();
   if (!gh || !configuredRepos().includes(repo)) return null;
   return runLog(gh, repo, runId);
+}
+
+/** Records a dashboard event (e.g. check results) in the project's activity log. */
+export async function recordEvent(repo: string, event: Omit<ActivityEvent, "id">): Promise<ActivityEvent> {
+  return storeFor(getOctokit()).append(repo, event);
+}
+
+/** Requests from Claude sessions that no person has answered yet. */
+export async function openRequests(repo: string): Promise<PushRequest[]> {
+  const events = await storeFor(getOctokit()).list(repo, 100);
+  return openRequestsOf(events).map((e) => ({ id: e.id, at: e.at, actor: e.actor, stageId: e.stageId!, wants: e.wants!, commit: e.commit, note: e.note }));
+}
+
+/**
+ * A person answers a Claude request. OK runs the asked action as that person
+ * (for a code-owner stage deploy: approval of that exact commit, then the push),
+ * with every normal permission check. Decline records a "decline". An actor
+ * starting "claude:" can never answer.
+ */
+export async function answerRequest(actor: string, repo: string, requestId: string, ok: boolean): Promise<ActionResult> {
+  const project = await getProject(repo);
+  if (!project) return { ok: false, status: 404, error: "unknown project" };
+  const req = (await openRequests(repo)).find((r) => r.id === requestId);
+  if (!req) return { ok: false, status: 404, error: "that request is already answered or gone" };
+  const role = await getRoleFor(repo, actor.startsWith("claude:") ? actor.slice(7) : actor);
+  const may = mayAnswer(project.config, req.stageId, actor, role);
+  if (!may.ok) return { ok: false, status: 403, error: may.reason };
+  if (!ok) {
+    const event = await storeFor(getOctokit()).append(repo, {
+      at: new Date().toISOString(), actor, action: "decline", stageId: req.stageId, commit: req.commit, answers: req.id, note: `declined ${req.actor.slice(7)}'s Claude request to ${req.wants}`,
+    });
+    return { ok: true, recordedAs: "action", event };
+  }
+  const stage = project.config.stages.find((s) => s.id === req.stageId)!;
+  if (stage.pushers === "code-owners" && req.wants === "deploy") {
+    if (!req.commit) return { ok: false, status: 400, error: "the request names no commit" };
+    const a = await performAction(actor, { repo, stageId: req.stageId, action: "approve", commit: req.commit, answers: req.id, note: `OK for ${req.actor}'s request` });
+    if (!a.ok) return a;
+  }
+  return performAction(actor, { repo, stageId: req.stageId, action: req.wants, commit: req.commit, answers: req.id, note: `asked by ${req.actor}` });
+}
+
+/** The valid approval for putting what is on the stage before onto the last stage, if any. */
+export async function currentApproval(repo: string): Promise<Approval | null> {
+  const project = await getProject(repo);
+  if (!project || project.stages.length < 2) return null;
+  const last = project.stages[project.stages.length - 1];
+  const prev = project.stages[project.stages.length - 2];
+  const a = await storeFor(getOctokit()).latestApproval(repo, last.stageId);
+  return approvalValid(a, last.stageId, prev.commit ?? undefined, prev.commit) ? a : null;
 }

@@ -7,7 +7,7 @@ import { repoToSlug } from "@/lib/shared";
 import { Icon } from "../ui";
 import { useRuns } from "./RunsProvider";
 
-const VERB: Record<ActiveRun["kind"], string> = { update: "Updating", "put-live": "Putting live:", undo: "Undoing on", "clear-cache": "Clearing cache on" };
+const VERB: Record<ActiveRun["kind"], string> = { update: "Updating", "put-live": "Putting live:", undo: "Undoing on", "clear-cache": "Clearing cache on", snapshot: "Backing up" };
 
 function elapsed(r: ActiveRun, now: number) {
   const s = Math.max(0, Math.round(((r.finishedAt ?? now) - r.startedAt) / 1000));
@@ -15,7 +15,7 @@ function elapsed(r: ActiveRun, now: number) {
 }
 
 export function runTitle(r: ActiveRun) {
-  if (r.state === "passed") return r.kind === "clear-cache" ? "Cache cleared" : `${r.stageName} updated`;
+  if (r.state === "passed") return r.kind === "clear-cache" ? "Cache cleared" : r.kind === "snapshot" ? "Backup saved" : `${r.stageName} updated`;
   if (r.state === "failed") return "Something went wrong — undone";
   if (r.state === "stopped") return "Stopped — nothing changed";
   return `${VERB[r.kind]} ${r.stageName.toLowerCase()}…`;
@@ -26,6 +26,7 @@ export function RunWindow() {
   const [now, setNow] = useState(() => Date.now());
   const [mini, setMini] = useState<Record<string, boolean>>({});
   const [gone, setGone] = useState<Record<string, boolean>>({});
+  const [stopErr, setStopErr] = useState<Record<string, string>>({});
 
   const [phone, setPhone] = useState(false);
 
@@ -88,9 +89,10 @@ export function RunWindow() {
               </>
             )}
             {done && <p aria-live="polite" className="text-soft">Took {elapsed(r, now)}.</p>}
+            {stopErr[r.id] && <p role="alert" className="font-bold text-red">{stopErr[r.id]}</p>}
             <div className="flex flex-wrap gap-2">
               {!done && (
-                <button type="button" onClick={() => stop(r.id)} className="min-h-[52px] flex-1 rounded-2xl bg-chip px-4 font-extrabold">Stop</button>
+                <button type="button" onClick={async () => { const e = await stop(r.id); setStopErr((m) => ({ ...m, [r.id]: e ?? "" })); }} className="min-h-[52px] flex-1 rounded-2xl bg-chip px-4 font-extrabold">Stop</button>
               )}
               {ok && r.stageUrl && (
                 <a href={r.stageUrl} target="_blank" rel="noreferrer" className="flex min-h-[52px] flex-1 items-center justify-center rounded-2xl bg-teal px-4 font-extrabold text-white">Open {r.stageName.toLowerCase()}</a>

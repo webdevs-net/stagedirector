@@ -3,6 +3,7 @@ import type { Change, ProjectConfig, RunningCommit, RunState, StageStatus } from
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
+import { summarize, summariesEnabled } from "./summary";
 
 // Contract with the engine's workflow (.github/workflows/stagedirector.yml):
 //  - workflow_dispatch inputs: stage, commit, action, requested_by
@@ -11,7 +12,7 @@ import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
 //    ref = commit, payload { stagedirector: 1, actor, outOfSync?: string[] },
 //    and sets its status to success / failure.
 
-export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache";
+export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot";
 
 export async function readFile(gh: Octokit, repo: string, path: string, ref?: string): Promise<string | null> {
   try {
@@ -51,6 +52,17 @@ export function roleSource(gh: Octokit): RoleSource {
       }
     },
   };
+}
+
+/** Pinned = the git ref refs/stagedirector/pins/<stage> exists (the workflow creates and deletes it). */
+export async function pinRefExists(gh: Octokit, repo: string, stageId: string): Promise<boolean> {
+  try {
+    await gh.rest.git.getRef({ ...splitRepo(repo), ref: `stagedirector/pins/${stageId}` });
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return false;
+    throw e;
+  }
 }
 
 export async function defaultBranchHead(gh: Octokit, repo: string, branch: string): Promise<string> {
@@ -173,21 +185,49 @@ function plainSummary(body: string | null | undefined, title: string): string {
   return (line ?? title).slice(0, 240);
 }
 
-/** Merged PRs in `from..to` (e.g. live commit .. staging commit). */
+/**
+ * What is in `to` but not yet in `from` (e.g. staging vs live): merged PRs, plus
+ * commits made straight to the branch with no PR. `from` null = the stage was
+ * never pushed: the newest commits up to `to` (at most 20).
+ */
 export async function changesBetween(gh: Octokit, repo: string, from: string | null, to: string | null): Promise<Change[]> {
   if (!to || from === to) return [];
-  if (!from) return [];
-  const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
+  let commits: { sha: string; commit: { message: string }; html_url: string }[];
+  if (from) {
+    const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
+    commits = data.commits.slice(-50);
+  } else {
+    const { data } = await gh.rest.repos.listCommits({ ...splitRepo(repo), sha: to, per_page: 20 });
+    commits = data.slice().reverse();
+  }
   const seen = new Map<number, Change>();
-  for (const c of data.commits.slice(-50)) {
+  const direct: Change[] = [];
+  const bodies = new Map<number, { body: string | null; sha: string }>();
+  for (const c of commits) {
     const { data: prs } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: c.sha });
-    for (const pr of prs) {
+    const merged = prs.filter((pr) => pr.merged_at);
+    if (merged.length === 0 && !/^Merge (pull request|branch)/.test(c.commit.message)) {
+      const [title, ...rest] = c.commit.message.split("\n");
+      direct.push({ pr: 0, commit: c.sha, title: title.slice(0, 200), summary: plainSummary(rest.join("\n"), title), url: c.html_url });
+    }
+    for (const pr of merged) {
       if (!pr.merged_at || seen.has(pr.number)) continue;
       const pages = (pr.body ?? "").match(/(?<=\bpages?:\s*)(\/[^\s,]*(?:[\s,]+\/[^\s,]*)*)/i)?.[0].split(/[\s,]+/);
       seen.set(pr.number, { pr: pr.number, title: pr.title, summary: plainSummary(pr.body, pr.title), url: pr.html_url, ...(pages ? { pages } : {}) });
+      bodies.set(pr.number, { body: pr.body, sha: pr.merge_commit_sha ?? pr.head.sha });
     }
   }
-  return [...seen.values()].sort((a, b) => a.pr - b.pr);
+  // "What this update does": Claude's plain summary when ANTHROPIC_API_KEY is set (cached per PR), else the first line of the description.
+  if (summariesEnabled()) {
+    await Promise.all(
+      [...seen.values()].map(async (ch) => {
+        const b = bodies.get(ch.pr)!;
+        const files = await gh.paginate(gh.rest.pulls.listFiles, { ...splitRepo(repo), pull_number: ch.pr, per_page: 100 }).catch(() => []);
+        ch.summary = await summarize({ repo, number: ch.pr, title: ch.title, body: b.body, sha: b.sha, files: files.map((f) => f.filename) });
+      }),
+    );
+  }
+  return [...[...seen.values()].sort((a, b) => a.pr - b.pr), ...direct];
 }
 
 export interface RunInfo {
@@ -199,12 +239,19 @@ export interface RunInfo {
   state: RunState;
   url: string;
   startedAt: string;
+  updatedAt?: string;
 }
 
 const TITLE = /^stagedirector (\S+) (\S+) (\S+) by (\S+)/;
 export function parseRunTitle(title: string | null | undefined) {
   const m = TITLE.exec(title ?? "");
   return m ? { action: m[1], stageId: m[2], commit: m[3], by: m[4] } : null;
+}
+
+/** A push run's title says "auto" for the stage: that is the first stage with trigger: auto. */
+export function resolveRunStage(config: ProjectConfig, stageId: string | null): string | null {
+  if (stageId !== "auto") return stageId;
+  return config.stages.find((s) => s.trigger === "auto" && s.pushers !== "none")?.id ?? null;
 }
 
 export function runState(status: string | null, conclusion: string | null): RunState {
@@ -229,6 +276,7 @@ export async function recentRuns(gh: Octokit, repo: string, perPage = 20): Promi
         state: runState(r.status, r.conclusion),
         url: r.html_url,
         startedAt: r.run_started_at ?? r.created_at,
+        updatedAt: r.updated_at,
       };
     });
   } catch (e) {

@@ -22,6 +22,11 @@ function withEtags(gh: Octokit): Octokit {
  */
 let cached: Octokit | null | undefined;
 
+// Octokit logs every failed request with console.error. Expected 404s (a stage that is not
+// pinned, a file that does not exist yet) are handled by the callers, so only warnings are
+// printed; real failures still throw and are reported where they are caught.
+const log = { debug: () => {}, info: () => {}, warn: console.warn, error: () => {} };
+
 export function githubConfigured(): boolean {
   const e = process.env;
   return Boolean((e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) || e.GITHUB_TOKEN);
@@ -30,8 +35,12 @@ export function githubConfigured(): boolean {
 export function getOctokit(): Octokit | null {
   if (cached !== undefined) return cached;
   const e = process.env;
+  // GITHUB_API_URL: GitHub Enterprise, or the fake GitHub used by the tests (src/lib/github/testing/fake-github.ts).
+  const baseUrl = e.GITHUB_API_URL || undefined;
   if (e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) {
     cached = withEtags(new Octokit({
+      baseUrl,
+      log,
       authStrategy: createAppAuth,
       auth: {
         appId: e.GITHUB_APP_ID,
@@ -40,7 +49,7 @@ export function getOctokit(): Octokit | null {
       },
     }));
   } else if (e.GITHUB_TOKEN) {
-    cached = withEtags(new Octokit({ auth: e.GITHUB_TOKEN }));
+    cached = withEtags(new Octokit({ log, auth: e.GITHUB_TOKEN, baseUrl }));
   } else {
     cached = null;
   }
@@ -75,3 +84,20 @@ export function splitRepo(repo: string): { owner: string; repo: string } {
 
 export const WORKFLOW_FILE = "stagedirector.yml";
 export const CONFIG_FILE = "stagedirector.yml";
+
+/** Tests only: forget the cached client and identity so new env vars take effect. */
+export function resetGithubClient() {
+  cached = undefined;
+  identity = undefined;
+}
+
+/** Octokit acting as a person (their own OAuth token), for things GitHub must attribute to them. */
+export function personOctokit(token: string): Octokit {
+  return new Octokit({ log, auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
+}
+
+/** True when the dashboard's own identity is a GitHub App (a bot), not a person's token. */
+export function dashboardIsApp(): boolean {
+  const e = process.env;
+  return Boolean(e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID);
+}

@@ -31,6 +31,15 @@ stages:
     status: scripts/deploy.sh status --json
     smokeTest: [/, /login/, /my-account/, /contact/]
     runner: ovh1
+checks: # run by the dashboard in the review step and after each run; results go to History
+  - name: Pages load
+    pages: [/, /my-account/, /contact/]
+  - name: Login page works
+    pages: [/login/]
+    expect: Lost your password
+  - name: No PHP errors
+    pages: [/, /login/, /contact/]
+    forbid: ["Fatal error", "Parse error", "Warning: ", "There has been a critical error"]
 tools:
   clearCache: scripts/clear-cache.sh
   syncCheck: scripts/deploy.sh drift

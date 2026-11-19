@@ -2,6 +2,7 @@
 // for real GitHub-backed ones with the same signatures.
 import type {
   ActivityEvent,
+  PushRequest,
   Change,
   ProjectConfig,
   ProjectSummary,
@@ -27,6 +28,8 @@ export interface ProjectExtras {
   stagingReady: boolean;
   files: string[];
   outOfSyncNote: string | null;
+  /** Open requests from Claude sessions (waiting for a person's OK). */
+  requests: PushRequest[];
 }
 
 export type ProjectView = ProjectSummary & { extras: ProjectExtras };
@@ -170,6 +173,7 @@ function build(): ProjectView[] {
         stagingReady: true,
         files: ["style.css", "functions.php", "footer.php", "content-page.php", "DIVI-REMOVAL.md"],
         outOfSyncNote: "content-page.php has 2 lines that are not in git. They are saved in the backup before being replaced.",
+        requests: [],
       },
     },
   ];
@@ -190,7 +194,7 @@ function build(): ProjectView[] {
           : [];
       list.push({
         repo,
-        config: { version: 1, name: `${g.name} · ${site}`, group: g.name, kind: g.kind, branch: "main", stages },
+        config: { version: 1, name: `${g.name} · ${site}`, group: g.name, kind: g.kind, branch: "main", stages, ...(g.kind.startsWith("Next.js") ? { noDowntime: true } : {}) },
         stages: statusFor(stages, flavor, i),
         waiting,
         needsMe: flavor === "ready" || flavor === "sync" || flavor === "fail",
@@ -204,6 +208,7 @@ function build(): ProjectView[] {
           stagingReady: false,
           files: [],
           outOfSyncNote: flavor === "sync" ? "footer.php was edited on the live server." : null,
+          requests: [],
         },
       });
     }
@@ -213,24 +218,51 @@ function build(): ProjectView[] {
 
 const PROJECTS = build();
 
+// Demo pins live on globalThis: in dev, server actions and pages can load separate copies of this module.
+const gp = globalThis as unknown as { __sdPins?: Set<string> };
+const PINS: Set<string> = (gp.__sdPins ??= new Set());
+function withPins(p: ProjectView): ProjectView {
+  return { ...p, stages: p.stages.map((s) => ({ ...s, pinned: PINS.has(`${p.repo}|${s.stageId}`) })) };
+}
+
 // ---- Public interface (swap for the real data layer later) ----
 
 export async function getViewer(): Promise<Viewer> {
   return { login: "ryan", name: "Ryan", role: "code-owner" };
 }
 
+function withRequests(p: ProjectView): ProjectView {
+  const requests = demoRequests(p.repo);
+  return requests.length ? { ...p, needsMe: true, extras: { ...p.extras, requests } } : p;
+}
+
 export async function listProjects(): Promise<ProjectView[]> {
-  return PROJECTS;
+  return PROJECTS.map((p) => withRequests(withPins(p)));
 }
 
 export async function getProject(repoSlug: string): Promise<ProjectView | null> {
-  return PROJECTS.find((p) => repoToSlug(p.repo) === repoSlug) ?? null;
+  const p = PROJECTS.find((x) => repoToSlug(x.repo) === repoSlug);
+  return p ? withRequests(withPins(p)) : null;
+}
+
+// Events recorded while the demo runs (e.g. check results). On globalThis: see PINS-style note below.
+const ge = globalThis as unknown as { __sdEvents?: Map<string, ActivityEvent[]> };
+const EVENTS: Map<string, ActivityEvent[]> = (ge.__sdEvents ??= new Map());
+
+export async function recordEvent(repo: string, e: Omit<ActivityEvent, "id">): Promise<ActivityEvent> {
+  const ev = { id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, ...e };
+  EVENTS.set(repo, [ev, ...(EVENTS.get(repo) ?? [])]);
+  return ev;
 }
 
 export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   const p = await getProject(repoSlug);
   if (!p) return [];
+  const asks: ActivityEvent[] = demoRequests(p.repo).map((r) => ({ id: r.id, at: r.at, actor: r.actor, action: "request", stageId: r.stageId, commit: r.commit, wants: r.wants, note: r.note }));
   return [
+    ...(EVENTS.get(p.repo) ?? []),
+    ...(p.repo === "netdevs-net/mariasplace" ? REQ.log : []),
+    ...asks,
     { id: "a1", at: ago(9), actor: "auto", action: "push", stageId: "staging", commit: sha(1), result: "passed", note: "Browsers load new styles right away. 2 files changed. Everything checked out." },
     { id: "a2", at: ago(10), actor: "ryan", action: "push", stageId: "staging", commit: sha(3), result: "passed", note: "New login page and sign-up pop-up designs. 1 file changed. Everything checked out." },
     { id: "a3", at: ago(17), actor: "ryan", action: "stop", stageId: "staging", result: "stopped", note: "It would have undone 2 files that were only on staging, so nothing was changed." },
@@ -255,7 +287,7 @@ export { repoToSlug, RUN_STEPS };
 
 // ---- Runs (mock). The data layer replaces these with GitHub workflow-run polling. ----
 
-export type RunKind = "update" | "put-live" | "undo" | "clear-cache";
+export type RunKind = "update" | "put-live" | "undo" | "clear-cache" | "snapshot";
 
 export interface ActiveRun {
   id: string;
@@ -271,6 +303,10 @@ export interface ActiveRun {
   progress: number;       // 0..100
   state: "running" | "passed" | "failed" | "stopped";
   finishedAt: number | null;
+  /** GitHub Actions run id (GitHub mode only). */
+  runId?: number;
+  /** Link to the run on GitHub (GitHub mode only). */
+  url?: string;
 }
 
 const RUN_MS = 20_000;
@@ -304,6 +340,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
   if (!p) return { error: "No such project" };
   if ([...RUNS.values()].some((r) => r.repo === repo && tick(r).state === "running")) return { error: "Something is already running here" };
   const stage = p.config.stages.find((s) => s.id === stageId) ?? p.config.stages[1];
+  if (kind !== "clear-cache" && kind !== "snapshot" && PINS.has(`${repo}|${stage.id}`)) return { error: `${stage.name} is pinned. Unpin it first.` };
   const run: ActiveRun = {
     id: `run-${Date.now()}`,
     repo,
@@ -314,7 +351,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
     kind,
     startedAt: Date.now(),
     step: 0,
-    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : RUN_STEPS,
+    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : kind === "snapshot" ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"] : RUN_STEPS,
     progress: 0,
     state: "running",
     finishedAt: null,
@@ -326,4 +363,43 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
 export async function stopRun(runId: string): Promise<void> {
   const r = RUNS.get(runId);
   if (r && tick(r).state === "running") Object.assign(r, { state: "stopped", finishedAt: Date.now() });
+}
+
+/** Demo pin/unpin: flips the stage's pinned flag (GitHub mode uses the workflow's pin ref). */
+export async function pinStage(repo: string, stageId: string, pin: boolean, role: Role): Promise<{ error: string } | null> {
+  const p = PROJECTS.find((x) => x.repo === repo);
+  const cfg = p?.config.stages.find((s) => s.id === stageId);
+  if (!p || !cfg) return { error: "No such stage" };
+  if (cfg.pushers === "none") return { error: `${cfg.name} is not pushed from here` };
+  if (cfg.pushers === "code-owners" ? role !== "code-owner" : role === "viewer") return { error: `Only a code owner can pin ${cfg.name}` };
+  if (pin) PINS.add(`${repo}|${stageId}`);
+  else PINS.delete(`${repo}|${stageId}`);
+  return null;
+}
+
+// ---- Claude requests (demo). One sample request so the flow can be tried. ----
+
+const gr = globalThis as unknown as { __sdReq?: { open: PushRequest[]; log: ActivityEvent[] } };
+const REQ = (gr.__sdReq ??= {
+  open: [
+    { id: "req-demo-1", at: ago(4), actor: "claude:ryan", stageId: "staging", wants: "deploy", commit: sha(5), note: "asks to deploy: footer spacing fix (PR #34) is merged; put it on staging to check on phones" },
+  ],
+  log: [],
+});
+
+export function demoRequests(repo: string): PushRequest[] {
+  return repo === "netdevs-net/mariasplace" ? REQ.open : [];
+}
+
+export async function answerDemoRequest(repo: string, id: string, actor: string, role: Role, ok: boolean): Promise<string | null> {
+  const r = demoRequests(repo).find((x) => x.id === id);
+  if (!r) return "That request is already answered or gone";
+  if (actor.startsWith("claude:")) return "A Claude session can never OK a request; a person must";
+  const p = PROJECTS.find((x) => x.repo === repo);
+  const stage = p?.config.stages.find((s) => s.id === r.stageId);
+  if (!stage) return "No such stage";
+  if (stage.pushers === "code-owners" && role !== "code-owner") return `Only a code owner can OK a request for ${stage.name}`;
+  REQ.open = REQ.open.filter((x) => x.id !== id);
+  REQ.log.unshift({ id: `ans-${Date.now()}`, at: new Date().toISOString(), actor, action: ok ? "push" : "decline", stageId: r.stageId, commit: r.commit, answers: id, result: ok ? "queued" : undefined, note: ok ? `OK for ${r.actor}'s request` : `declined ${r.actor}'s request` });
+  return null;
 }

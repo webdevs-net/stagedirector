@@ -9,9 +9,11 @@
     "start": "next start -p 53100",
     "lint": "next lint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
     "@octokit/auth-app": "^8.3.1",
     "@octokit/rest": "^22.0.1",
     "next": "15.3.0",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

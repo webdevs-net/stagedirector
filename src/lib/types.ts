@@ -35,7 +35,23 @@ export interface ProjectConfig {
     snapshot?: string;        // e.g. a Kopia command
   };
   liveTodo?: string[];        // manual steps to repeat after a live push
+  checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
+}
+
+/** One check the dashboard runs against a stage (before approving, and after each run). */
+export interface CheckConfig {
+  name: string;               // "Login page works"
+  pages: string[];            // paths, e.g. ["/login/"]; each must answer 2xx (401 is OK on non-last stages)
+  expect?: string;            // text every page must contain, e.g. "Lost your password"
+  forbid?: string[];          // text no page may contain, e.g. ["Fatal error", "Warning:"]
+  stages?: string[];          // stage ids to run on; default: every stage with a url
+}
+
+export interface CheckResult {
+  name: string;
+  ok: boolean;
+  detail: string;             // plain words, e.g. "/login/ answered 500"
 }
 
 export type Role = "viewer" | "developer" | "code-owner";
@@ -70,7 +86,8 @@ export interface RunningCommit {
 }
 
 export interface Change {
-  pr: number;
+  pr: number;                 // 0 for a commit made straight to the branch (no PR)
+  commit?: string;            // set for such a commit
   title: string;
   summary: string;            // plain-English summary
   url: string;
@@ -88,12 +105,27 @@ export interface ActivityEvent {
   id: string;
   at: string;
   actor: string;              // GitHub login, "auto", or "claude:<login>" for a session acting for a person
-  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "clear-cache" | "check";
+  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "snapshot" | "check";
   stageId?: string;
   commit?: string;
   result?: RunState;
   note?: string;
   runId?: number;             // GitHub Actions run id, when the event is (or started) a workflow run
+  /** On a "request": what the Claude session asks for. */
+  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "approve";
+  /** On the event that answers a request (the push it led to, or a "decline"): the request's id. */
+  answers?: string;
+}
+
+/** An open request from a Claude session, waiting for a person's OK. */
+export interface PushRequest {
+  id: string;                 // the request event's id
+  at: string;
+  actor: string;              // "claude:<login>"
+  stageId: string;
+  wants: NonNullable<ActivityEvent["wants"]>;
+  commit?: string;
+  note?: string;
 }
 
 export interface ProjectSummary {

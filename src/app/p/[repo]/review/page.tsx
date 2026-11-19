@@ -1,6 +1,7 @@
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { BackLink, ButtonLink, Card, Icon, Page } from "@/components/ui";
+import { CheckPanel } from "@/components/CheckPanel";
 
 export default async function ReviewPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
@@ -9,6 +10,8 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
   const last = p.config.stages[p.config.stages.length - 1];
   const commit = p.stages[p.stages.length - 2]?.commit ?? "";
   const isOwner = viewer.role === "code-owner";
+  const before = p.config.stages[p.config.stages.length - 2];
+  const slug = decodeURIComponent((await params).repo);
 
   return (
     <Page width="max-w-[860px]">
@@ -35,13 +38,15 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
           <p className="text-soft">{c.summary}</p>
           <nav aria-label="Changes" className="flex flex-wrap gap-2">
             {p.waiting.map((w, i) => (
-              <ButtonLink key={w.pr} href={`${base}/review?i=${i}${q ? "&as=developer" : ""}`} tone={i === idx ? "blue" : "plain"} className="rounded-full">
+              <ButtonLink key={w.pr || w.commit} href={`${base}/review?i=${i}${q ? "&as=developer" : ""}`} tone={i === idx ? "blue" : "plain"} className="rounded-full">
                 {i + 1}
               </ButtonLink>
             ))}
           </nav>
         </Card>
       )}
+
+      {c && before?.url && <CheckPanel repoSlug={slug} stageId={before.id} stageName={before.name} when="before" auto />}
 
       {p.config.liveTodo && p.config.liveTodo.length > 0 && (
         <Card aria-labelledby="todo-title" className="flex flex-col gap-3">
