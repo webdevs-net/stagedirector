@@ -8,6 +8,12 @@ Tailwind) on top of self-hosted GitHub Actions runners.
 - Mockups: https://claude.ai/artifact/UvM8iRL9AvZdk9ro2VizbM
 - Shared types: `src/lib/types.ts`. Project config: `stagedirector.yml` (see `examples/`).
 
+## Hosting and access
+- Runs on ovh1 at `stagedirector.webdevs.net` (exact name to confirm), reachable **only over Tailscale**. No public port, no public DNS record pointing at it.
+- Two locks: Tailscale (only tailnet devices reach it) + GitHub sign-in (who you are, and your role from CODEOWNERS).
+- Nothing may depend on inbound calls from the internet: no GitHub webhooks into the dashboard. Read state by polling the GitHub API; the runner only makes outbound connections.
+- HTTPS via Tailscale (`tailscale serve` / a cert for the tailnet name) or a DNS-challenge cert for the webdevs.net name.
+
 ## Rules
 - The dashboard never talks to hosting directly. Buttons start GitHub workflow runs; status, logs and history come from the GitHub API.
 - Approval for the last stage is a person's action by a code owner (from the project's CODEOWNERS). No script, test fixture or AI session may approve or push live by itself.
