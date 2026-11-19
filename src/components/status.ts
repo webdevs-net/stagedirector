@@ -13,7 +13,7 @@ export function healthOf(p: ProjectView): Health {
 
 export const HEALTH_LABEL: Record<Health, { text: (p: ProjectView) => string; color: string }> = {
   ok: { text: () => "Up to date", color: "text-[#0f6f6b]" },
-  ready: { text: (p) => `${p.waiting.length} ready for live`, color: "text-blue" },
+  ready: { text: (p) => `${p.waiting.length} ready for live`, color: "text-amber" },
   sync: { text: () => "Out of sync", color: "text-[#9a5b12]" },
   fail: { text: () => "Check failed", color: "text-red" },
   busy: { text: (p) => `${p.busy?.by} is updating`, color: "text-blue" },

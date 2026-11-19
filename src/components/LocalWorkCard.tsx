@@ -19,14 +19,14 @@ export function LocalWorkCard({ work, mainBranch }: { work: LocalWork; mainBranc
             {work.behind > 0 && <> · {work.behind} behind {work.upstream ?? `origin/${mainBranch}`}</>}
           </p>
         </div>
-        <span className={`rounded-full px-3.5 py-2 text-[15px] font-bold ${clean ? "bg-teal-soft text-[#0f6f6b]" : "bg-blue-soft text-[#1f4f94]"}`}>
+        <span className={`rounded-full px-3.5 py-2 text-[15px] font-bold ${clean ? "bg-teal-soft text-[#0f6f6b]" : "bg-amber-soft text-[#7a4800]"}`}>
           {clean ? "Everything is pushed" : [n && `${n} uncommitted ${n === 1 ? "file" : "files"}`, u && `${u} ${u === 1 ? "commit" : "commits"} not pushed`].filter(Boolean).join(" · ")}
         </span>
       </div>
 
       {u > 0 && (
-        <div className="flex flex-col gap-3 rounded-[18px] bg-blue-soft p-4">
-          <p className="font-bold text-[#1f4f94]">
+        <div className="flex flex-col gap-3 rounded-[18px] bg-amber-soft p-4">
+          <p className="font-bold text-[#7a4800]">
             GitHub (and so staging) can&apos;t see {u === 1 ? "this commit" : `these ${u} commits`} until you push.
           </p>
           <ul className="flex flex-col gap-1 text-[15px]">

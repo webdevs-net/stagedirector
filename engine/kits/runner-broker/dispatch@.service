@@ -1,0 +1,17 @@
+# /etc/systemd/system/stagedirector-dispatch@.service  (instance = meru-staging, meru-live)
+# One quick check per tick; holds nothing between ticks. Low priority so client sites win.
+[Unit]
+Description=Stage Director runner dispatch (%i)
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/stagedirector-runner-dispatch %i
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryMax=64M
+TimeoutStartSec=50min
+SyslogLevelPrefix=no
+LogRateLimitIntervalSec=1h
+LogRateLimitBurst=50

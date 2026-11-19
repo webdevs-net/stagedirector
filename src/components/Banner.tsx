@@ -1,14 +1,17 @@
 import type { ReactNode } from "react";
 import { ButtonLink, Icon } from "./ui";
 
-type Kind = "busy" | "sync" | "undid" | "quiet" | "ready";
+type Kind = "busy" | "sync" | "undid" | "quiet" | "ready" | "pending";
 
 const STYLE: Record<Kind, { bg: string; dot: string; icon: "refresh" | "alert" | "lock" | "check" | "globe" }> = {
   busy: { bg: "bg-blue-soft", dot: "bg-blue", icon: "refresh" },
   sync: { bg: "bg-[#fdf1e3]", dot: "bg-[#d9822b]", icon: "alert" },
   undid: { bg: "bg-red-soft", dot: "bg-[#d64545]", icon: "refresh" },
   quiet: { bg: "bg-chip", dot: "bg-muted", icon: "lock" },
+  // Green only when there is nothing left to do.
   ready: { bg: "bg-teal-soft", dot: "bg-teal", icon: "check" },
+  // Done here, but still waiting on someone (e.g. changes not on live yet).
+  pending: { bg: "bg-amber-soft", dot: "bg-amber", icon: "check" },
 };
 
 export function Banner({ kind, title, detail, action }: { kind: Kind; title: string; detail?: ReactNode; action?: { label: string; href: string } }) {

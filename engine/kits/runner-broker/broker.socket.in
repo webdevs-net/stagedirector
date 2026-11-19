@@ -1,0 +1,17 @@
+# Template. Install as /etc/systemd/system/sd-broker-INSTANCE.socket (see README):
+#   sed 's/INSTANCE/meru-staging/g' broker.socket.in > /etc/systemd/system/sd-broker-meru-staging.socket
+# Idle cost: zero processes. systemd holds the socket; a broker starts only per connection.
+[Unit]
+Description=Stage Director deploy broker socket (INSTANCE)
+
+[Socket]
+ListenStream=/run/stagedirector/INSTANCE.sock
+SocketUser=root
+SocketGroup=sd-INSTANCE
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=2
+
+[Install]
+WantedBy=sockets.target
