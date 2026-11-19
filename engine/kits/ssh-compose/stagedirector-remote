@@ -16,6 +16,11 @@
 # Exit codes follow engine/contract.md: 0 ok, 2 refused (nothing changed), 1 failed (rolled back
 # when possible). Prints STAGEDIRECTOR_BACKUP=<id> before changing anything.
 #
+# NO_DOWNTIME=true (host .env): each release is a git worktree in RELEASES_DIR and
+# RELEASES_DIR/current points at the live one. Images are built in the new folder while
+# the old release keeps serving; then `current` is switched in one atomic rename and
+# `up -d` swaps containers without a build. Rollback = switch back (instant undo).
+#
 # Never runs `docker compose down`, never removes volumes, and always passes the explicit
 # project name, so staging can never touch live's containers or data.
 
@@ -40,6 +45,9 @@ ENV_FILES="$(get ENV_FILES)"
 PROTECTED_PROJECTS="$(get PROTECTED_PROJECTS)"
 HEALTH_TIMEOUT="$(get HEALTH_TIMEOUT)"; HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 GUARD="$(get GUARD)"
+NO_DOWNTIME="$(get NO_DOWNTIME)"; NO_DOWNTIME="${NO_DOWNTIME:-false}"
+RELEASES_DIR="$(get RELEASES_DIR)"
+KEEP_RELEASES="$(get KEEP_RELEASES)"; KEEP_RELEASES="${KEEP_RELEASES:-5}"
 STATE_DIR="/var/lib/stagedirector/$PROJECT-$STAGE"
 LOG_FILE="$STATE_DIR/deploy.log"
 
@@ -49,15 +57,28 @@ for p in ${PROTECTED_PROJECTS//,/ }; do
 done
 [ -d "$APP_DIR/.git" ] || die "APP_DIR $APP_DIR is not a git checkout"
 [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || die "bad HEALTH_TIMEOUT"
+case "$NO_DOWNTIME" in
+  true)
+    [[ "$RELEASES_DIR" == /* ]] || die "NO_DOWNTIME=true needs an absolute RELEASES_DIR in $CONF"
+    [[ "$KEEP_RELEASES" =~ ^[0-9]+$ ]] && [ "$KEEP_RELEASES" -ge 2 ] || die "KEEP_RELEASES must be 2 or more"
+    install -d -m 755 "$RELEASES_DIR" ;;
+  false) ;;
+  *) die "NO_DOWNTIME must be true or false" ;;
+esac
 install -d -m 750 "$STATE_DIR"; touch "$LOG_FILE"
 
-dc() {
-  local args=(-p "$COMPOSE_PROJECT_NAME") f
-  for f in ${COMPOSE_FILES//,/ }; do args+=(-f "$APP_DIR/$f"); done
+# Folder the running release lives in: APP_DIR, or the release `current` points at.
+root() {
+  if [ "$NO_DOWNTIME" = true ] && [ -L "$RELEASES_DIR/current" ]; then readlink -f "$RELEASES_DIR/current"; else printf '%s' "$APP_DIR"; fi
+}
+dc() { dc_in "$(root)" "$@"; }
+dc_in() { # dc_in <folder> <compose args...>
+  local dir="$1" args=(-p "$COMPOSE_PROJECT_NAME") f; shift
+  for f in ${COMPOSE_FILES//,/ }; do args+=(-f "$dir/$f"); done
   for f in ${ENV_FILES//,/ }; do args+=(--env-file "$f"); done
   docker compose "${args[@]}" "$@"
 }
-current() { git -C "$APP_DIR" rev-parse HEAD; }
+current() { git -C "$(root)" rev-parse HEAD; }
 
 wait_healthy() { # every container in the project running, and healthy where it has a healthcheck
   local waited=0 bad cid st
@@ -81,8 +102,40 @@ run_guard() { # optional host-side check, e.g. staging mail safety; must exit 0
 }
 
 switch_to() { # check out $1 and start it
+  if [ "$NO_DOWNTIME" = true ]; then
+    prepare "$1" && flip "$1" && dc_in "$RELEASES_DIR/$1" up -d --remove-orphans
+    return
+  fi
   git -C "$APP_DIR" -c advice.detachedHead=false checkout -q --detach "$1"
   dc up -d --build --remove-orphans
+}
+
+prepare() { # no-downtime: release folder for $1 with images built; the running release is untouched
+  local dir="$RELEASES_DIR/$1"
+  if [ ! -d "$dir" ]; then
+    git -C "$APP_DIR" worktree prune
+    git -C "$APP_DIR" worktree add -q --detach "$dir" "$1" || return 1
+  fi
+  dc_in "$dir" build --pull || return 1
+}
+
+flip() { # no-downtime: point current at release $1 in one atomic rename
+  ln -sfn "$RELEASES_DIR/$1" "$RELEASES_DIR/.current.tmp"
+  mv -T "$RELEASES_DIR/.current.tmp" "$RELEASES_DIR/current"
+  log "switched current -> $1"
+}
+
+prune_releases() { # keep the newest KEEP_RELEASES folders and always the current one
+  [ "$NO_DOWNTIME" = true ] || return 0
+  local keep cur d
+  cur="$(readlink -f "$RELEASES_DIR/current" 2>/dev/null || true)"
+  keep="$(ls -1dt "$RELEASES_DIR"/*/ 2>/dev/null | head -n "$KEEP_RELEASES" | sed 's:/$::')"
+  for d in "$RELEASES_DIR"/*/; do
+    d="${d%/}"
+    [ "$d" = "$cur" ] && continue
+    grep -qxF "$d" <<<"$keep" && continue
+    git -C "$APP_DIR" worktree remove --force "$d" && log "removed old release $(basename "$d")"
+  done
 }
 
 lock="$STATE_DIR/.lock"
@@ -108,9 +161,10 @@ case "$CMD" in
     PREV="$(current)"
     run_guard
     echo "STAGEDIRECTOR_BACKUP=$PREV"
-    log "deploying $ARG (was $PREV) as $COMPOSE_PROJECT_NAME"
+    log "deploying $ARG (was $PREV) as $COMPOSE_PROJECT_NAME$( [ "$NO_DOWNTIME" = true ] && echo " (no-downtime switch)")"
     if switch_to "$ARG" && wait_healthy; then
       log "deployed $ARG by ${BY:-stagedirector}"
+      prune_releases || log "could not prune old releases (not fatal)"
       exit 0
     fi
     log "FAILED $ARG; putting $PREV back"
@@ -122,6 +176,7 @@ case "$CMD" in
     [ -z "${BY:-}" ] || [[ "$BY" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || die "bad login"
     [[ "${ARG:-}" =~ ^[0-9a-f]{40}$ ]] || die "rollback needs the backup id (a full sha)"
     git -C "$APP_DIR" cat-file -e "$ARG^{commit}" || die "backup $ARG not in $APP_DIR"
+    [ "$NO_DOWNTIME" != true ] || [ -d "$RELEASES_DIR/$ARG" ] || log "release folder for $ARG is gone; rebuilding it (slower undo)"
     log "rollback to $ARG (was $(current))"
     switch_to "$ARG" && wait_healthy && { log "rolled back to $ARG"; exit 0; }
     log "ROLLBACK FAILED; check now"; exit 1

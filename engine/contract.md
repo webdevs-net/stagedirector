@@ -20,6 +20,7 @@ The dashboard never runs these commands and never talks to a host. It starts a
 | `STAGEDIRECTOR_REQUESTED_BY` | who asked, as sent by the dashboard (`auto` for pushes) |
 | `STAGEDIRECTOR_RUN_URL` | link to the run, for logs and records |
 | `STAGEDIRECTOR_APPROVAL` | path to the approval file; only for `deploy`/`rollback` into a `pushers: code-owners` stage |
+| `STAGEDIRECTOR_NO_DOWNTIME` | `1` when `noDowntime: true` in `stagedirector.yml`, else `0` (see [No-downtime switch](#no-downtime-switch-nodowntime-true)) |
 | `SSH_AUTH_SOCK` | agent holding the host key from the environment secret |
 
 There is no terminal (stdin is not a TTY). A command must never wait for input.
@@ -97,6 +98,44 @@ missing there). Empty output = in sync. Exit `0` either way; `2` if it cannot te
 
 Clears the stage's caches (`STAGEDIRECTOR_STAGE`). Idempotent. Failure is reported
 but does not fail a deploy.
+
+## No-downtime switch (`noDowntime: true`)
+
+Optional. With `noDowntime: true` in `stagedirector.yml` the workflow sets
+`STAGEDIRECTOR_NO_DOWNTIME=1`, and a deploy command that supports it works with
+**release folders and one atomic switch** instead of copying over the running site:
+
+```
+<base>/releases/<release id>/   one complete copy per release (id = commit sha or timestamp)
+<base>/current -> releases/<id> the site serves from this symlink
+```
+
+1. **Prepare** the new release in its own folder while the old one keeps serving:
+   copy or check out the files, install dependencies, build images. Nothing visible changes.
+2. Print `STAGEDIRECTOR_BACKUP=<id of the release now in current>`. The backup *is* the
+   previous release folder; no copy is needed.
+3. **Switch** in one step: `ln -sfn releases/<new> current.tmp && mv -T current.tmp current`
+   (a rename is atomic, so a request sees either the old or the new release, never a mix).
+   Then reload what needs it (PHP-FPM/OPcache reload, `docker compose up -d` without a build).
+4. Smoke test as usual. On failure the Safety net calls `rollback <stage> <backup>`.
+
+`rollback <stage> <id>` with no-downtime = point `current` back at `releases/<id>` (same
+atomic rename) and reload. This is the **instant undo**: seconds, no copying, no rebuild.
+
+Rules:
+- Shared data never lives in a release folder: uploads, `.env`, caches, databases are
+  outside and linked in (e.g. `releases/<id>/wp-content/uploads -> ../../shared/uploads`).
+- Keep at least the current and the previous release (the kit keeps 5). Never delete the
+  folder `current` points to or the newest backup id.
+- A host that can't do it (no symlinks, a web root that must be a real folder) ignores the
+  flag and deploys the normal way. The deploy should print one line saying so.
+- Database migrations are not undone by the switch. A change that needs one should either
+  be backwards compatible or not use the instant undo.
+
+The SSH-compose kit (`engine/kits/ssh-compose`) supports this with `NO_DOWNTIME=true` in its
+host `.env`: each release is a `git worktree` under `RELEASES_DIR`, images are built
+before the switch, and `up -d` then only swaps containers (a few seconds per changed
+container, not the whole build). Undo needs no rebuild.
 
 ## Approval file (non-interactive live)
 

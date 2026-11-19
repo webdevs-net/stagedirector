@@ -64,7 +64,7 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
                 <div className="flex flex-wrap gap-2.5">
                   {e.action === "push" && e.result === "passed" && (
                     <ActionButton act="run" repo={p.repo} stageId={e.stageId ?? "staging"} kind="undo" className="bg-amber-soft text-[#7a4800]">
-                      Undo this update
+                      {p.config.noDowntime ? "Undo this update (instant switch back)" : "Undo this update"}
                     </ActionButton>
                   )}
                   <ButtonLink href={`${base}/updating?stage=${e.stageId ?? "staging"}`} tone="plain">See the log</ButtonLink>

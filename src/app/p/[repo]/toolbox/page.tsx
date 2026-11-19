@@ -45,6 +45,9 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
             {live?.outOfSync.length ? <ButtonLink href={`${base}/history${q}`} tone="amber">Look</ButtonLink> : <span className="font-bold text-[#0f6f6b]">All good</span>}
           </SafeCard>
           <SafeCard title="Site watch" body="Live site is up · checked 1 min ago"><span className="flex items-center gap-1.5 font-bold text-[#0f6f6b]"><Icon name="check" /> Up</span></SafeCard>
+          <SafeCard title="No-downtime switch" body={p.config.noDowntime ? "Updates swap in one step; Undo takes seconds" : "Off · set noDowntime: true in stagedirector.yml"}>
+            <span className={`font-bold ${p.config.noDowntime ? "text-[#0f6f6b]" : "text-muted"}`}>{p.config.noDowntime ? "On" : "Off"}</span>
+          </SafeCard>
           <SafeCard title="Quiet hours" body="No live updates Fri 5 pm – Mon 8 am"><Toggle label="Quiet hours" on={false} /></SafeCard>
         </div>
       </section>
