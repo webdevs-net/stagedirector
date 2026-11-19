@@ -87,12 +87,27 @@ export interface ActivityEvent {
   id: string;
   at: string;
   actor: string;              // GitHub login, "auto", or "claude:<login>" for a session acting for a person
-  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "clear-cache" | "check";
+  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "check";
   stageId?: string;
   commit?: string;
   result?: RunState;
   note?: string;
   runId?: number;             // GitHub Actions run id, when the event is (or started) a workflow run
+  /** On a "request": what the Claude session asks for. */
+  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "approve";
+  /** On the event that answers a request (the push it led to, or a "decline"): the request's id. */
+  answers?: string;
+}
+
+/** An open request from a Claude session, waiting for a person's OK. */
+export interface PushRequest {
+  id: string;                 // the request event's id
+  at: string;
+  actor: string;              // "claude:<login>"
+  stageId: string;
+  wants: NonNullable<ActivityEvent["wants"]>;
+  commit?: string;
+  note?: string;
 }
 
 export interface ProjectSummary {

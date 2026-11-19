@@ -1,7 +1,8 @@
 import "server-only";
 import type { Octokit } from "@octokit/rest";
-import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, Role, StageStatus } from "@/lib/types";
+import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, PushRequest, Role, StageStatus } from "@/lib/types";
 import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
+import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
 import { configuredRepos, getOctokit, selfLogin, splitRepo } from "./client";
 import { changesBetween, readConfig, recentRuns, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
@@ -119,6 +120,8 @@ export type ActionInput = {
   commit?: string;
   runId?: number;
   note?: string;
+  /** Id of the Claude request this action answers. */
+  answers?: string;
 };
 
 export type ActionResult =
@@ -178,12 +181,14 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   if (!decision.allowed) return { ok: false, status: 403, error: decision.reason };
 
   const at = new Date().toISOString();
-  const base = { at, actor, stageId: input.stageId, commit: input.commit, note: input.note };
+  const base = { at, actor, stageId: input.stageId, commit: input.commit, note: input.note, ...(input.answers ? { answers: input.answers } : {}) };
 
   if (decision.recordAs === "request") {
     const event = await store.append(input.repo, {
       ...base,
       action: "request",
+      wants: input.action === "stop" ? undefined : input.action,
+      commit: input.commit ?? (input.action === "deploy" || input.action === "approve" ? prev?.commit ?? undefined : undefined),
       note: `asks to ${input.action}${input.note ? `: ${input.note}` : ""}`,
     });
     return { ok: true, recordedAs: "request", event };
@@ -229,4 +234,39 @@ export async function getRunLog(repo: string, runId: number): Promise<string | n
 /** Records a dashboard event (e.g. check results) in the project's activity log. */
 export async function recordEvent(repo: string, event: Omit<ActivityEvent, "id">): Promise<ActivityEvent> {
   return storeFor(getOctokit()).append(repo, event);
+}
+
+/** Requests from Claude sessions that no person has answered yet. */
+export async function openRequests(repo: string): Promise<PushRequest[]> {
+  const events = await storeFor(getOctokit()).list(repo, 100);
+  return openRequestsOf(events).map((e) => ({ id: e.id, at: e.at, actor: e.actor, stageId: e.stageId!, wants: e.wants!, commit: e.commit, note: e.note }));
+}
+
+/**
+ * A person answers a Claude request. OK runs the asked action as that person
+ * (for a code-owner stage deploy: approval of that exact commit, then the push),
+ * with every normal permission check. Decline records a "decline". An actor
+ * starting "claude:" can never answer.
+ */
+export async function answerRequest(actor: string, repo: string, requestId: string, ok: boolean): Promise<ActionResult> {
+  const project = await getProject(repo);
+  if (!project) return { ok: false, status: 404, error: "unknown project" };
+  const req = (await openRequests(repo)).find((r) => r.id === requestId);
+  if (!req) return { ok: false, status: 404, error: "that request is already answered or gone" };
+  const role = await getRoleFor(repo, actor.startsWith("claude:") ? actor.slice(7) : actor);
+  const may = mayAnswer(project.config, req.stageId, actor, role);
+  if (!may.ok) return { ok: false, status: 403, error: may.reason };
+  if (!ok) {
+    const event = await storeFor(getOctokit()).append(repo, {
+      at: new Date().toISOString(), actor, action: "decline", stageId: req.stageId, commit: req.commit, answers: req.id, note: `declined ${req.actor.slice(7)}'s Claude request to ${req.wants}`,
+    });
+    return { ok: true, recordedAs: "action", event };
+  }
+  const stage = project.config.stages.find((s) => s.id === req.stageId)!;
+  if (stage.pushers === "code-owners" && req.wants === "deploy") {
+    if (!req.commit) return { ok: false, status: 400, error: "the request names no commit" };
+    const a = await performAction(actor, { repo, stageId: req.stageId, action: "approve", commit: req.commit, answers: req.id, note: `OK for ${req.actor}'s request` });
+    if (!a.ok) return a;
+  }
+  return performAction(actor, { repo, stageId: req.stageId, action: req.wants, commit: req.commit, answers: req.id, note: `asked by ${req.actor}` });
 }

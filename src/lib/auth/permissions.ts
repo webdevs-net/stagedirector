@@ -66,6 +66,13 @@ export function decide(req: ActionRequest): Decision {
   if (req.role === "viewer") return { allowed: false, reason: "you can look but not change this project" };
   if (stage.pushers === "none") return { allowed: false, reason: `${stage.name} is not pushed from here` };
 
+  // A Claude session never changes a stage itself: everything but Stop becomes a request a person must OK.
+  if (claude && req.action !== "stop") {
+    if (req.action === "approve" && stage.pushers !== "code-owners") return { allowed: false, reason: `${stage.name} needs no approval` };
+    if (req.action === "deploy" && !req.commit) return { allowed: false, reason: "pick a commit to push" };
+    return { allowed: true, recordAs: "request" };
+  }
+
   if (req.action === "approve") {
     if (stage.pushers !== "code-owners") return { allowed: false, reason: `${stage.name} needs no approval` };
     if (!req.commit) return { allowed: false, reason: "approval needs an exact commit" };
@@ -104,4 +111,24 @@ export function decide(req: ActionRequest): Decision {
     return { allowed: false, reason: "this project has no clear-cache command" };
   }
   return { allowed: true, recordAs: "action" };
+}
+
+/**
+ * May `actor` (with `role`) OK a Claude session's request for this stage?
+ * Staging-like stages: any person who may push there. Code-owner stages: a code owner.
+ * An actor starting with "claude:" can never OK anything.
+ */
+export function mayAnswer(config: ProjectConfig, stageId: string, actor: string, role: Role): { ok: true } | { ok: false; reason: string } {
+  if (isClaude(actor)) return { ok: false, reason: "a Claude session can never OK a request; a person must" };
+  const found = stageOf(config, stageId);
+  if (!found) return { ok: false, reason: `unknown stage "${stageId}"` };
+  if (role === "viewer") return { ok: false, reason: "you can look but not change this project" };
+  if (found.stage.pushers === "code-owners" && role !== "code-owner") return { ok: false, reason: `only a code owner can OK a request for ${found.stage.name}` };
+  return { ok: true };
+}
+
+/** Requests that nobody has answered yet, newest first. */
+export function openRequestsOf<E extends { id: string; at: string; actor: string; action: string; stageId?: string; wants?: string; commit?: string; note?: string; answers?: string }>(events: E[]) {
+  const answered = new Set(events.map((e) => e.answers).filter(Boolean));
+  return events.filter((e) => e.action === "request" && e.wants && e.stageId && !answered.has(e.id));
 }

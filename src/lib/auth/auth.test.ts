@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectConfig } from "@/lib/types";
 import { deployOwners, ownersFor, parseCodeowners } from "./codeowners";
 import { getRole, type RoleSource } from "./roles";
-import { approvalValid, decide } from "./permissions";
+import { approvalValid, decide, mayAnswer, openRequestsOf } from "./permissions";
 
 const CO = `# owners
 *            @ryan @acme/leads
@@ -94,10 +94,10 @@ describe("decide", () => {
     // staging moved since the approval
     expect(decide({ ...base, commit: A, previousStageCommit: B, approval }).allowed).toBe(false);
   });
-  it("claude sessions only ever make requests on code-owner stages", () => {
+  it("claude sessions only ever make requests, on every stage", () => {
     expect(decide({ config, stageId: "live", action: "approve", actor: "claude:ryan", role: "code-owner", commit: A })).toEqual({ allowed: true, recordAs: "request" });
     expect(decide({ config, stageId: "live", action: "deploy", actor: "claude:ryan", role: "code-owner", commit: A, previousStageCommit: A, approval })).toEqual({ allowed: true, recordAs: "request" });
-    expect(decide({ config, stageId: "staging", action: "deploy", actor: "claude:dev", role: "developer", commit: A })).toEqual({ allowed: true, recordAs: "action" });
+    expect(decide({ config, stageId: "staging", action: "deploy", actor: "claude:dev", role: "developer", commit: A })).toEqual({ allowed: true, recordAs: "request" });
   });
   it("an approval by a claude session never counts", () => {
     expect(approvalValid({ ...approval, by: "claude:ryan" }, "live", A, A)).toBe(false);
@@ -126,5 +126,32 @@ describe("pinned stages", () => {
     expect(decide({ config, stageId: "live", action: "pin", actor: "dev", role: "developer", pinned: false }).allowed).toBe(false);
     expect(decide({ config, stageId: "live", action: "pin", actor: "ryan", role: "code-owner", pinned: false }).allowed).toBe(true);
     expect(decide({ config, stageId: "staging", action: "pin", actor: "dev", role: "developer", pinned: false }).allowed).toBe(true);
+  });
+});
+
+describe("Claude asks, a person approves", () => {
+  const config: ProjectConfig = {
+    version: 1, name: "t", branch: "main",
+    stages: [
+      { id: "staging", name: "Staging", pushers: "developers", trigger: "auto", deploy: "x" },
+      { id: "live", name: "Live", pushers: "code-owners", trigger: "manual", deploy: "x" },
+    ],
+  };
+  it("staging requests need a person; live requests a code owner", () => {
+    expect(mayAnswer(config, "staging", "dev", "developer").ok).toBe(true);
+    expect(mayAnswer(config, "live", "dev", "developer").ok).toBe(false);
+    expect(mayAnswer(config, "live", "ryan", "code-owner").ok).toBe(true);
+  });
+  it("an actor starting claude: can never OK", () => {
+    expect(mayAnswer(config, "staging", "claude:ryan", "code-owner").ok).toBe(false);
+    expect(mayAnswer(config, "live", "claude:ryan", "code-owner").ok).toBe(false);
+  });
+  it("a request stays open until something answers it", () => {
+    const ev = [
+      { id: "2", at: "2", actor: "dev", action: "decline", answers: "1" },
+      { id: "1", at: "1", actor: "claude:ryan", action: "request", stageId: "staging", wants: "deploy" },
+      { id: "0", at: "0", actor: "claude:ryan", action: "request", stageId: "live", wants: "deploy" },
+    ];
+    expect(openRequestsOf(ev).map((e) => e.id)).toEqual(["0"]);
   });
 });
