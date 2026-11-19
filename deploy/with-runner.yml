@@ -1,0 +1,7 @@
+# Adds the self-hosted runner from engine/compose to the dashboard's Compose project.
+#   docker compose -f docker-compose.yml -f with-runner.yml up -d --build
+# Needs engine/compose/.env (copy engine/compose/.env.example and fill it in).
+include:
+  - path: ../engine/compose/docker-compose.yml
+    env_file: ../engine/compose/.env
+    project_directory: ../engine/compose

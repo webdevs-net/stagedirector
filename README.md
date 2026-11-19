@@ -131,6 +131,60 @@ STAGEDIRECTOR_DEV_LOGIN=your-login npm run dev
 
 Without GitHub credentials it runs on **sample data** (what the screenshots show), and every button can be tried. To use real projects, copy `.env.example` to `.env.local` and fill in the GitHub OAuth app, a GitHub App or token, and `STAGEDIRECTOR_REPOS`.
 
+## Run it on ovh1 (Docker, Tailscale only)
+
+Written for the owner to run by hand; nothing here has been run against the server.
+The dashboard listens on `127.0.0.1:3100` only and `tailscale serve` publishes it to
+the tailnet with HTTPS. No public port, no public DNS, no inbound webhooks.
+
+1. **Get the code on ovh1** (as the deploy user):
+
+   ```bash
+   git clone https://github.com/netdevs-net/stagedirector.git ~/stagedirector
+   ```
+
+2. **Fill in the settings.** `deploy/.env.example` lists every variable. The OAuth
+   client secret, `AUTH_SECRET` and the GitHub App key are typed in by the owner only.
+
+   ```bash
+   cd ~/stagedirector/deploy && cp .env.example .env && chmod 600 .env
+   ```
+
+3. **Start it.** Dashboard only:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   Or the dashboard and the self-hosted runner together (needs `engine/compose/.env`, see
+   [engine/compose/README.md](engine/compose/README.md)):
+
+   ```bash
+   docker compose -f docker-compose.yml -f with-runner.yml up -d --build
+   ```
+
+4. **Check it is healthy** (Docker's healthcheck calls the same URL every 30 s):
+
+   ```bash
+   curl -s http://127.0.0.1:3100/api/health
+   ```
+
+5. **Publish it on the tailnet** with Tailscale's own HTTPS certificate:
+
+   ```bash
+   sudo tailscale serve --bg --https=443 http://127.0.0.1:3100
+   ```
+
+   Then open `https://<ovh1's tailnet name>/`. To use `stagedirector.webdevs.net` instead,
+   point a DNS record at ovh1's **tailnet** IP (100.x) and use a DNS-challenge certificate;
+   set `AUTH_URL` to whichever address people use, and add it to the OAuth app's callbacks.
+   Never use `tailscale funnel` (that would make it public).
+
+6. **Update later:** `git pull && docker compose up -d --build` in `deploy/`.
+
+The container runs as an unprivileged user with a read-only file system, no Linux
+capabilities, and memory/CPU caps (`DASHBOARD_MEMORY`, `DASHBOARD_CPUS`).
+
 ## Adding a project
 
 1. Add `stagedirector.yml` to the project's repo ([example](examples/mariasplace.stagedirector.yml)).

@@ -1,0 +1,46 @@
+# Stage Director dashboard (and, optionally, the runner next to it).
+#
+#   cd deploy
+#   cp .env.example .env            # fill it in; never commit .env
+#   docker compose up -d --build    # dashboard only
+#
+# With the self-hosted runner from engine/compose on the same host
+# (engine/compose/.env must exist; see engine/compose/README.md):
+#   docker compose -f docker-compose.yml -f with-runner.yml up -d --build
+#
+# The dashboard listens on 127.0.0.1 only. `tailscale serve` publishes it to the
+# tailnet with HTTPS; nothing is opened to the internet.
+
+name: ${COMPOSE_PROJECT_NAME:-stagedirector}
+
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: stagedirector-dashboard:${DASHBOARD_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3100"
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-3100}:3100"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: ${DASHBOARD_MEMORY:-512m}
+    cpus: ${DASHBOARD_CPUS:-0.5}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
