@@ -257,3 +257,23 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
   moves after approval, approve the new tip.
 - Custom refs for pins: if GitHub refuses `refs/stagedirector/...` for a repo, switch
   to tags `stagedirector-pin-<stage>` (two lines in the workflow).
+
+## Outside deploys
+
+Sometimes a stage is deployed without Stage Director (e.g. `scripts/deploy.sh staging`
+from a terminal). So the dashboard still shows what each stage really runs:
+
+1. **Version marker.** Every deploy (inside or outside Stage Director) writes the full
+   commit SHA to `.stagedirector-version` in the site's web root, e.g.
+   `git rev-parse HEAD > "$WEBROOT/.stagedirector-version"`. It must be served at
+   `<stage url>/.stagedirector-version`. (It reveals only the commit id.)
+2. **Report from the terminal** (instant): at the end of the deploy script, call
+   `engine/kits/report-deploy.sh <stage>` (copy it into the project). It does nothing
+   inside a Stage Director run (`STAGEDIRECTOR=1`) and never fails the deploy.
+3. **Version check** (catches everything else): `engine/workflow/stagedirector-observe.yml`
+   reads the markers every 30 minutes.
+
+Both write GitHub Deployments in environment `observed-<stage>`. These are **display
+only**: the live gate reads `environment=<stage>` and never these, so a deploy made
+outside Stage Director can not unlock a push to live. To put such a commit live, push
+it through Stage Director (staging first, then the usual code-owner approval).

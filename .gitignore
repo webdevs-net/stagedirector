@@ -41,9 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 !.env.example
+stagedirector.local.json
 
 # browser tests
 /.next-e2e-*/
 /playwright-report/
 /test-results/
 /.next-sandbox/
+
+# saved copy of GitHub data (src/lib/github/swr.ts)
+/.stagedirector-cache/

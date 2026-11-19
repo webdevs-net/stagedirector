@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 53100",
+    "dev:live": "scripts/dev-live.sh",
     "build": "next build",
     "start": "next start -p 53100",
     "lint": "next lint",

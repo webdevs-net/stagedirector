@@ -4,6 +4,9 @@ import { timeAgo } from "@/components/status";
 import { BackLink, Button, ButtonLink, Card, Chevron, Icon, Page } from "@/components/ui";
 import { UpdateStagingButton } from "@/components/UpdateStagingButton";
 import { RunOverlay } from "@/components/runs/RunOverlay";
+import { LocalWorkCard } from "@/components/LocalWorkCard";
+import { readLocalWork } from "@/lib/local/git";
+import { runningDetail, runningHeadline } from "@/components/runningText";
 import { PinButton } from "@/components/PinButton";
 import { RequestsCard } from "@/components/RequestsCard";
 import { mayAnswer } from "@/lib/auth/permissions";
@@ -19,6 +22,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const approved = !!p.extras.approval;
   const n = p.waiting.length;
   const liveSync = st(last.id)?.outOfSync ?? [];
+  const local = await readLocalWork(p.repo, p.config.branch);
+  const midRunning = middle ? st(middle.id)?.running ?? null : null;
+  const liveRunning = st(last.id)?.running ?? null;
   const middlePinned = !!middle && !!st(middle.id)?.pinned;
   const livePinned = !!st(last.id)?.pinned;
   const pinnable = stages.filter((s) => s.pushers !== "none");
@@ -48,9 +54,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         {p.busy && <Banner kind="busy" title={`${p.busy.by} is updating ${p.busy.stageId}`} detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${base}/updating${q}` }} />}
         {p.extras.safetyNetUndid && <Banner kind="undid" title="Safety net undid an update" detail={p.extras.safetyNetUndid} action={{ label: "Why?", href: `${base}/history${q}` }} />}
         {liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
+        {liveRunning && <Banner kind="sync" title={`${last.name}: ${runningHeadline(liveRunning, p.config.branch)}`} detail={`${runningDetail(liveRunning)}. Putting live from here still needs the usual approval.`} />}
         {p.extras.quietHours && <Banner kind="quiet" title="Quiet hours" detail={p.extras.quietHours} />}
-        {p.extras.stagingReady && middle && <Banner kind="ready" title={`${middle.name} is ready to look at`} detail="Also sent by email · Alerts" action={{ label: "Open", href: middle.url ?? "#" }} />}
+        {p.extras.stagingReady && middle && <Banner kind="ready" title={`${middle.name} is ready to look at`} detail={`${p.waiting.length} ${p.waiting.length === 1 ? "change" : "changes"} not on ${last.name.toLowerCase()} yet`} action={{ label: "Open", href: middle.url ?? "#" }} />}
       </div>
+
+      {local && <LocalWorkCard work={local} mainBranch={p.config.branch} />}
 
       {middle && (
         <RunOverlay repo={p.repo}>
@@ -69,8 +78,18 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
             <div aria-hidden="true" className="flex justify-center text-[#b9c7d6] max-md:rotate-90"><Icon name="arrow" size={40} /></div>
             <div className="flex flex-col gap-1.5 rounded-3xl bg-teal-soft p-5">
               <span className="text-sm font-extrabold tracking-wider text-[#0f6f6b]">{middle.name.toUpperCase()}</span>
-              <span className="text-xl font-extrabold">{(st(middle.id)?.behindBy ?? 0) === 0 ? `Up to date with ${p.config.branch}` : `${st(middle.id)?.behindBy} behind ${p.config.branch}`}</span>
-              <span className="text-[15px] text-teal-ink">Updated {timeAgo(st(middle.id)?.deployedAt ?? null)} · everything checked out</span>
+              {midRunning ? (
+                <>
+                  <span className="text-xl font-extrabold">{runningHeadline(midRunning, p.config.branch)}</span>
+                  <span className="text-[15px] text-teal-ink">{runningDetail(midRunning)}</span>
+                  <span className="text-sm text-muted">Last push through Stage Director: {st(middle.id)?.commit?.slice(0, 7) ?? "none"} · {timeAgo(st(middle.id)?.deployedAt ?? null)}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xl font-extrabold">{(st(middle.id)?.behindBy ?? 0) === 0 ? `Up to date with ${p.config.branch}` : `${st(middle.id)?.behindBy} behind ${p.config.branch}`}</span>
+                  <span className="text-[15px] text-teal-ink">Updated {timeAgo(st(middle.id)?.deployedAt ?? null)}</span>
+                </>
+              )}
               {middle.url && <ButtonLink href={middle.url} className="mt-2.5 min-h-14 text-teal-ink">Open {middle.name.toLowerCase()}</ButtonLink>}
             </div>
           </div>

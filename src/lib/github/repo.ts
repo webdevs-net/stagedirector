@@ -1,5 +1,5 @@
 import type { Octokit } from "@octokit/rest";
-import type { Change, ProjectConfig, RunState, StageStatus } from "@/lib/types";
+import type { Change, ProjectConfig, RunningCommit, RunState, StageStatus } from "@/lib/types";
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
@@ -96,6 +96,40 @@ async function latestSuccessfulDeployment(gh: Octokit, repo: string, stageId: st
   return null;
 }
 
+/** GitHub environment for outside-deploy records. Never equal to a stage id, so the live gate ignores it. */
+export const observedEnvironment = (stageId: string) => `observed-${stageId}`;
+
+export interface Observed {
+  commit: string;
+  at: string;
+  by: string | null;
+  source: RunningCommit["source"];
+  ref?: string;
+}
+
+/** Newest outside-deploy record for a stage (written by engine/kits/report-deploy.sh or the observe workflow). */
+export async function latestObserved(gh: Octokit, repo: string, stageId: string): Promise<Observed | null> {
+  const { data } = await gh.rest.repos.listDeployments({ ...splitRepo(repo), environment: observedEnvironment(stageId), per_page: 1 });
+  const d = data[0];
+  if (!d) return null;
+  const payload = (d.payload ?? {}) as { actor?: string; source?: string; ref?: string };
+  return {
+    commit: d.sha,
+    at: d.created_at,
+    by: payload.actor ?? d.creator?.login ?? null,
+    source: payload.source === "version-check" ? "version-check" : "terminal",
+    ref: payload.ref ?? (d.ref !== d.sha ? d.ref : undefined),
+  };
+}
+
+/** The outside record wins when it is newer than Stage Director's own deploy and names a different commit. */
+export function pickRunning(own: { commit: string; at: string } | null, seen: Observed | null): Observed | null {
+  if (!seen) return null;
+  if (own && seen.commit === own.commit) return null;
+  if (own && Date.parse(seen.at) <= Date.parse(own.at)) return null;
+  return seen;
+}
+
 async function behind(gh: Octokit, repo: string, base: string | null, head: string | null): Promise<number> {
   if (!base || !head || base === head) return 0;
   const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${base}...${head}`, per_page: 1 });
@@ -110,12 +144,22 @@ export async function stageStatuses(
   pinned: (stageId: string) => Promise<boolean>,
 ): Promise<StageStatus[]> {
   const head = await defaultBranchHead(gh, repo, config.branch).catch(() => null);
-  const deployed = await Promise.all(
-    config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id))),
-  );
+  const [deployed, observed] = await Promise.all([
+    Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id)))),
+    Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestObserved(gh, repo, s.id).catch(() => null)))),
+  ]);
   return Promise.all(
     config.stages.map(async (s, i) => {
       const d = deployed[i];
+      const seen = pickRunning(d, observed[i]);
+      let running: RunningCommit | null = null;
+      if (seen && head) {
+        const cmp = await gh.rest.repos
+          .compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${seen.commit}...${head}`, per_page: 1 })
+          .then((r) => r.data)
+          .catch(() => null);
+        running = { ...seen, behindBy: cmp?.ahead_by ?? 0, onBranch: cmp ? cmp.behind_by === 0 : false };
+      }
       // Compare with the previous stage that has a commit, or the branch head.
       let prev: string | null = head;
       for (let j = i - 1; j >= 0; j--) if (deployed[j]) { prev = deployed[j]!.commit; break; }
@@ -127,6 +171,7 @@ export async function stageStatuses(
         behindBy: d ? await behind(gh, repo, d.commit, prev).catch(() => 0) : 0,
         outOfSync: d?.outOfSync ?? [],
         pinned: s.pushers === "none" ? false : await pinned(s.id),
+        running,
       };
     }),
   );
@@ -138,6 +183,20 @@ function plainSummary(body: string | null | undefined, title: string): string {
     .map((l) => l.replace(/^#+\s*|^[-*]\s*/, "").trim())
     .find((l) => l && !l.startsWith("<!--"));
   return (line ?? title).slice(0, 240);
+}
+
+// Which PRs a commit came from hardly ever changes once merged, so remember it (10 min)
+// instead of asking GitHub again for every commit on every read.
+type PrList = Awaited<ReturnType<Octokit["rest"]["repos"]["listPullRequestsAssociatedWithCommit"]>>["data"];
+const prMemo = new Map<string, { at: number; prs: PrList }>();
+async function prsForCommit(gh: Octokit, repo: string, sha: string): Promise<PrList> {
+  const key = `${repo}@${sha}`;
+  const hit = prMemo.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.prs;
+  const { data } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: sha });
+  if (prMemo.size > 5000) prMemo.clear();
+  prMemo.set(key, { at: Date.now(), prs: data });
+  return data;
 }
 
 /**
@@ -158,8 +217,10 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
   const seen = new Map<number, Change>();
   const direct: Change[] = [];
   const bodies = new Map<number, { body: string | null; sha: string }>();
-  for (const c of commits) {
-    const { data: prs } = await gh.rest.repos.listPullRequestsAssociatedWithCommit({ ...splitRepo(repo), commit_sha: c.sha });
+  // One request per commit, all at once (they were sequential: ~8 s for 50 commits). Order is kept below.
+  const prLists = await Promise.all(commits.map((c) => prsForCommit(gh, repo, c.sha)));
+  for (const [i, c] of commits.entries()) {
+    const prs = prLists[i];
     const merged = prs.filter((pr) => pr.merged_at);
     if (merged.length === 0 && !/^Merge (pull request|branch)/.test(c.commit.message)) {
       const [title, ...rest] = c.commit.message.split("\n");
