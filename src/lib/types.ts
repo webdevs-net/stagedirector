@@ -76,6 +76,7 @@ export interface ActivityEvent {
   commit?: string;
   result?: RunState;
   note?: string;
+  runId?: number;             // GitHub Actions run id, when the event is (or started) a workflow run
 }
 
 export interface ProjectSummary {

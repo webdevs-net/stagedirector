@@ -94,6 +94,7 @@ export async function getActivity(repo: string, limit = 50): Promise<ActivityEve
     commit: r.commit ?? undefined,
     result: r.state,
     note: r.url,
+    runId: r.id,
   }));
   // Pin/unpin/clear-cache runs are already logged by the dashboard record; keep runs for pushes and undos.
   const runEvents = fromRuns.filter((e) => e.action === "push" || e.action === "undo");
@@ -201,7 +202,7 @@ export async function performAction(actor: string, input: ActionInput): Promise<
       : runs.find((r) => (r.state === "running" || r.state === "queued") && r.stageId === input.stageId);
     if (!run || run.stageId !== input.stageId) return { ok: false, status: 404, error: "no running push on that stage" };
     await cancelRun(gh, input.repo, run.id);
-    const event = await store.append(input.repo, { ...base, action: "stop", commit: run.commit ?? undefined });
+    const event = await store.append(input.repo, { ...base, action: "stop", commit: run.commit ?? undefined, runId: run.id });
     return { ok: true, recordedAs: "action", event };
   }
 
