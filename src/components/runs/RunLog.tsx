@@ -18,7 +18,7 @@ export function RunLog({ repo, repoSlug, stageId, initial }: { repo: string; rep
     const load = () => runLogAction(repoSlug, stageId).then((l) => alive && setLog(l)).catch(() => {});
     load();
     if (!running) return () => { alive = false; };
-    const t = setInterval(load, 4000);
+    const t = setInterval(load, 10_000); // the server keeps the log 15 s, so this costs GitHub little
     return () => {
       alive = false;
       clearInterval(t);

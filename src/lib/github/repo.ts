@@ -3,6 +3,7 @@ import type { Change, ProjectConfig, RunningCommit, RunState, StageStatus } from
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
 import { localGit, prFromMessage, type LocalGit } from "./localgit";
+import { GatewayBusy } from "./gateway";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
 import { summarize, summariesEnabled } from "./summary";
 
@@ -375,7 +376,8 @@ export async function runLog(gh: Octokit, repo: string, runId: number): Promise<
     try {
       const res = await gh.rest.actions.downloadJobLogsForWorkflowRun({ ...splitRepo(repo), job_id: job.id });
       parts.push(`=== ${job.name} ===\n${String(res.data)}`);
-    } catch {
+    } catch (e) {
+      if (e instanceof GatewayBusy) throw e; // held back: keep the last log instead of a blank one
       parts.push(`=== ${job.name} ===\n(log not available yet)`);
     }
   }

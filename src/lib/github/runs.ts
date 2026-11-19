@@ -5,13 +5,17 @@ import type { ProjectConfig } from "@/lib/types";
 import { configuredRepos, getOctokit, splitRepo } from "./client";
 import { mapProgress, type GhJob } from "./progress";
 import { localRuns } from "./runprogress";
+import { GatewayBusy } from "./gateway";
 import { readConfig, recentRuns, resolveRunStage, runLog, type RunInfo } from "./repo";
 
 // Live run progress from GitHub Actions. The browser polls every second while
 // something runs; answers are cached for a few seconds per repo so GitHub's
 // rate limit is not hit (5000 calls/hour for an App installation).
 
-const RUN_TTL = 3_000;
+// How long one answer from GitHub is reused. The browser asks every 5 s while a run
+// goes; GitHub is asked at most every 15 s (2 calls: runs + jobs). With a local
+// progress file (runprogress.ts) a going run costs no calls at all.
+const RUN_TTL = Number(process.env.STAGEDIRECTOR_RUN_TTL_MS) || 15_000;
 const CONFIG_TTL = 60_000;
 const KEEP_FINISHED = 60_000;
 
@@ -110,7 +114,13 @@ async function runsFor(gh: Octokit, repo: string): Promise<ActiveRun[]> {
     runCache.set(repo, { at: Date.now(), runs: out });
     return out;
   }
-  const recent = await recentRuns(gh, repo, 5).catch(() => [] as RunInfo[]);
+  let recent: RunInfo[];
+  try {
+    recent = await recentRuns(gh, repo, 5);
+  } catch {
+    // Held back by the gateway cap, or GitHub trouble: keep showing what we had.
+    return hit?.runs ?? [];
+  }
   const out: ActiveRun[] = [];
   for (const r of recent) {
     const running = r.state === "running" || r.state === "queued";
@@ -179,7 +189,10 @@ export async function findRun(id: string): Promise<ActiveRun | null> {
 export async function latestRunFor(repo: string, stageId: string): Promise<RunInfo | null> {
   const gh = getOctokit();
   if (!gh) return null;
-  const recent = await recentRuns(gh, repo, 10).catch(() => []);
+  const recent = await recentRuns(gh, repo, 10).catch((e) => {
+    if (e instanceof GatewayBusy) throw e; // let the caller keep its last answer
+    return [];
+  });
   return recent.find((r) => r.stageId === stageId && r.action !== "pin" && r.action !== "unpin") ?? null;
 }
 
@@ -187,7 +200,10 @@ export async function latestRunFor(repo: string, stageId: string): Promise<RunIn
 export async function runLogLines(repo: string, runId: number, max = 300): Promise<string[]> {
   const gh = getOctokit();
   if (!gh) return [];
-  const text = await runLog(gh, repo, runId).catch(() => "");
+  const text = await runLog(gh, repo, runId).catch((e) => {
+    if (e instanceof GatewayBusy) throw e;
+    return "";
+  });
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z\s?/, ""))

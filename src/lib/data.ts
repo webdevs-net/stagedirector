@@ -135,6 +135,11 @@ export function isDemo(): boolean {
  */
 export async function getRunLog(repoSlug?: string, stageId?: string): Promise<{ lines: string[]; url: string | null; sample: boolean }> {
   if (!live() || !repoSlug || !stageId) return { lines: await mock.getRunLog(), url: null, sample: true };
+  // Kept 15 s and shared by every open log window; a held-back call keeps the last log.
+  return swr(`log:${repoSlug}:${stageId}`, 15_000, () => asCaller("runs", () => readRunLog(repoSlug, stageId)));
+}
+
+async function readRunLog(repoSlug: string, stageId: string): Promise<{ lines: string[]; url: string | null; sample: boolean }> {
   const run = await runs.latestRunFor(slugToRepo(repoSlug), stageId);
   if (!run) return { lines: ["No run on this stage yet."], url: null, sample: false };
   const lines = await runs.runLogLines(slugToRepo(repoSlug), run.id);
