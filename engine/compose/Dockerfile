@@ -1,14 +1,23 @@
 # Stage Director runner image: the official GitHub Actions runner plus the tools deploy
 # commands need (ssh, rsync, git, jq, python3-yaml, gh, Node + Wrangler, docker CLI).
-ARG RUNNER_VERSION=2.321.0
+ARG RUNNER_VERSION=2.338.2
 ARG NODE_VERSION=20.18.1
 
 FROM node:${NODE_VERSION}-bookworm-slim AS node
 
 FROM ghcr.io/actions/actions-runner:${RUNNER_VERSION}
 ARG WRANGLER_VERSION=3.99.0
+# Optional Ubuntu mirror, e.g. http://ubuntu.mirrors.ovh.net/ubuntu/ on OVH hosts, where
+# archive/security.ubuntu.com can time out and apt-get update hangs. Empty = Ubuntu defaults.
+ARG APT_MIRROR=
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# hadolint ignore=SC2016
+RUN if [ -n "$APT_MIRROR" ]; then \
+      for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+        if [ -f "$f" ]; then sed -i -E "s#https?://(archive|security)\.ubuntu\.com/ubuntu/?#${APT_MIRROR%/}/#g" "$f"; fi; \
+      done; \
+    fi
 # hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
