@@ -8,6 +8,7 @@
 #   deploy/stagedirector.sh status --json                  (per stage, needs that stage's key)
 set -euo pipefail
 HOST="${STAGEDIRECTOR_HOST:-vultr1-deploy}"   # alias or tailnet name; host key pinned by the workflow
+PORT="${STAGEDIRECTOR_PORT:-2222}"             # sshd port for locked keys (Tailscale SSH keeps 22)
 SOCK="${STAGEDIRECTOR_BROKER_SOCKET:-}"           # set inside the self-hosted runner container
 remote() {
   if [ -n "$SOCK" ]; then
@@ -18,7 +19,7 @@ remote() {
     grep -v '^STAGEDIRECTOR_EXIT=' <<<"$out" || true
     return "${rc:-1}"
   fi
-  ssh -o BatchMode=yes -o ConnectTimeout=15 "$HOST" "$*"
+  ssh -o BatchMode=yes -o ConnectTimeout=15 -p "$PORT" "$HOST" "$*"
 }
 case "${1:-}" in
   staging|live)

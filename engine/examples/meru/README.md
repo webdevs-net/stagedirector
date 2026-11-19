@@ -24,11 +24,80 @@ for `deploy <sha>`, `rollback <id>` or `status` of its one stage. Setup: `kits/r
 
 The GitHub-hosted path below (Tailscale + forced-command SSH) still works with `runner: github`.
 
-> **Tailscale SSH caveat:** if Tailscale SSH (`tailscale up --ssh`) is on for vultr1, it answers
-> tailnet connections itself and **ignores `authorized_keys`, including the forced command**. A
-> GitHub job that joined the tailnet would then not be locked to `stagedirector-remote`. Turn
-> Tailscale SSH off for vultr1 (or have the job reach `sshd` on a non-Tailscale path) before
-> installing the stage keys, and test that a stage key cannot get a shell.
+## Keep Tailscale SSH for people, give deploy jobs their own locked port
+
+Tailscale SSH (`tailscale up --ssh`) answers port 22 on vultr1's tailnet address itself and
+**never reads `authorized_keys`**, so the forced command would not apply there. Keep it for
+people, and send deploy jobs to the server's own `sshd` on **port 2222**, which only the tailnet
+can reach and where every key is locked to `stagedirector-remote`.
+
+**1. Tailscale access rules** (admin console > Access controls). Tag vultr1 (e.g. `tag:vultr1`)
+and the deploy job joins as `tag:ci` (set in the workflow). `tag:ci` may reach only port 2222,
+and no `ssh` rule may name it, so it can never get a Tailscale SSH shell:
+
+```jsonc
+"grants": [
+  // deploy jobs: the locked port only
+  {"src": ["tag:ci"], "dst": ["tag:vultr1"], "ip": ["tcp:2222"]}
+],
+"ssh": [
+  // people only; never list tag:ci or autogroup:tagged here
+  {"action": "check", "src": ["autogroup:member"], "dst": ["tag:vultr1"], "users": ["autogroup:nonroot", "root"]}
+]
+```
+
+**2. `sshd` on 2222 for the deploy user only.** `/etc/ssh/sshd_config.d/stagedirector.conf`:
+
+```
+# Port 22 stays (public sshd as today); 2222 is added for Stage Director.
+Port 22
+Port 2222
+Match LocalPort 2222
+    AllowUsers stagedirector
+    AuthenticationMethods publickey
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PermitTTY no
+    AllowTcpForwarding no
+    AllowAgentForwarding no
+    AllowStreamLocalForwarding no
+    X11Forwarding no
+    PermitTunnel no
+```
+
+Before restarting: `sudo sshd -T | grep -i '^port'` (both ports, no duplicates) and
+`sudo sshd -t`. On Ubuntu 22.10+ sshd is socket-activated: `sudo systemctl daemon-reload &&
+sudo systemctl restart ssh.socket`. Keep your current SSH session open while you test.
+
+**3. Firewall: 2222 from the tailnet only.** `sudo ufw allow in on tailscale0 to any port 2222
+proto tcp` and no public rule for 2222 (also block it in the Vultr firewall, if one is used).
+
+**4. Locked keys.** User `stagedirector` (no sudo, not in the `docker` group; `stagedirector-remote`
+does the privileged steps). One key per stage in `~stagedirector/.ssh/authorized_keys`:
+
+```
+command="/usr/local/bin/stagedirector-remote meru staging",restrict ssh-ed25519 AAAA... stagedirector-meru-staging
+command="/usr/local/bin/stagedirector-remote meru live",restrict ssh-ed25519 AAAA... stagedirector-meru-live
+```
+
+`restrict` turns off shells, ttys, forwarding and file transfer; the key can only start that
+script, and the script only accepts `deploy <sha>`, `rollback <id>` or `status`.
+
+**5. GitHub side.** Per environment: `STAGEDIRECTOR_SSH_KEY` = that stage's private key.
+Repo variable `STAGEDIRECTOR_KNOWN_HOSTS` with the port in brackets:
+`[vultr1.<tailnet>.ts.net]:2222 ssh-ed25519 AAAA...` (from `ssh-keyscan -p 2222 <host>`).
+`deploy/stagedirector.sh` connects to `STAGEDIRECTOR_HOST` on `STAGEDIRECTOR_PORT` (default 2222).
+
+**6. Prove the lock before the first deploy** (from a tailnet device, with the staging key):
+
+```bash
+ssh -p 2222 -i staging_key stagedirector@vultr1 id         # must print the script's refusal, not uid=
+ssh -p 2222 -i staging_key -t stagedirector@vultr1          # no shell
+ssh -p 2222 -i staging_key -N -L 9999:127.0.0.1:58088 stagedirector@vultr1   # forwarding refused
+ssh -p 2222 -i staging_key stagedirector@vultr1 status     # works
+```
+
+And from a `tag:ci` node, `ssh vultr1` on port 22 must be refused by Tailscale.
 
 ## Staging, isolated from live
 
