@@ -8,7 +8,8 @@
 #   deploy/stagedirector.sh status --json                  (per stage, needs that stage's key)
 set -euo pipefail
 HOST="${STAGEDIRECTOR_HOST:-vultr1-deploy}"   # alias or tailnet name; host key pinned by the workflow
-remote() { ssh -o BatchMode=yes -o ConnectTimeout=15 "$HOST" "$*"; }
+PORT="${STAGEDIRECTOR_PORT:-2222}"             # sshd port for locked keys (Tailscale SSH keeps 22)
+remote() { ssh -o BatchMode=yes -o ConnectTimeout=15 -p "$PORT" "$HOST" "$*"; }
 case "${1:-}" in
   staging|live)
     [ "${STAGEDIRECTOR_STAGE:-}" = "$1" ] || { echo "stage mismatch" >&2; exit 2; }
