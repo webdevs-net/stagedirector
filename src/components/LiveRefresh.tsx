@@ -89,7 +89,7 @@ export function LiveRefresh({ demo = false, limitedUntil = null, everyMs = 60_00
   }, [refresh, refreshFromGithub, onReturn, everyMs]);
 
   return (
-    <div className="fixed right-3 top-3 z-40 flex items-center gap-2 rounded-full bg-white/90 py-1 pl-3.5 pr-1 text-sm font-bold text-muted shadow-[0_4px_18px_rgba(30,43,58,.08)]" aria-live="polite">
+    <div className="fixed bottom-3 left-3 z-30 sm:bottom-5 sm:left-5 flex items-center gap-2 rounded-full bg-white/90 py-1 pl-3.5 pr-1 text-sm font-bold text-muted shadow-[0_4px_18px_rgba(30,43,58,.08)]" aria-live="polite">
       <span className={`h-2 w-2 rounded-full ${pending && manual ? "animate-pulse bg-blue" : "bg-teal"}`} aria-hidden="true" />
       {limitedUntil && (
         <span className="rounded-full bg-amber-soft px-2.5 py-0.5 text-amber" title="GitHub allows a set number of requests per hour. Showing the last data read until the limit resets.">

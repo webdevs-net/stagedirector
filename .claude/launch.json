@@ -1,6 +1,25 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "stagedirector", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 53100 }
+    {
+      "name": "stagedirector",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 53100
+    },
+    {
+      "name": "stagedirector-timeline",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "-p",
+        "53111"
+      ],
+      "port": 53111
+    }
   ]
 }

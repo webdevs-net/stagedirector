@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { loadProject, type PageProps } from "@/components/load";
-import { BackLink, Button, ButtonLink, Eyebrow, Icon, Page } from "@/components/ui";
+import { ProjectNav } from "@/components/ProjectNav";
+import { Button, ButtonLink, Eyebrow, Icon, Page } from "@/components/ui";
 import { ToolTile } from "@/components/ToolTile";
 
 const svg = (d: React.ReactNode) => (
@@ -25,7 +26,7 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
 
   return (
     <Page width="max-w-[960px]">
-      <BackLink href={`${base}${q}`} label={p.config.name} />
+      <ProjectNav name={p.config.name} base={base} q={q} active="toolbox" />
       <h1 className="text-3xl font-extrabold">Toolbox</h1>
 
       <section aria-labelledby="do-title" className="flex flex-col gap-3">

@@ -1,7 +1,8 @@
+import { ProjectNav } from "@/components/ProjectNav";
 import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
-import { BackLink, ButtonLink, Chevron, Eyebrow, Page } from "@/components/ui";
+import { ButtonLink, Chevron, Eyebrow, Page } from "@/components/ui";
 import { getActivity } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
 
@@ -35,7 +36,7 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
 
   return (
     <Page width="max-w-[860px]">
-      <BackLink href={`${base}${q}`} label={p.config.name} />
+      <ProjectNav name={p.config.name} base={base} q={q} active="history" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-3xl font-extrabold">History</h1>
         <div className="flex flex-wrap gap-2">

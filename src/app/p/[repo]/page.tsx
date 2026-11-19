@@ -1,6 +1,7 @@
+import { ProjectNav } from "@/components/ProjectNav";
 import { Banner } from "@/components/Banner";
 import { loadProject, type PageProps } from "@/components/load";
-import { BackLink, Button, ButtonLink, Card, Chevron, Icon, Page } from "@/components/ui";
+import { Button, ButtonLink, Card, Chevron, Icon, Page } from "@/components/ui";
 import { UpdateStagingButton } from "@/components/UpdateStagingButton";
 import { StagingCard } from "@/components/StagingCard";
 import { RunOverlay } from "@/components/runs/RunOverlay";
@@ -34,7 +35,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
 
   return (
     <Page>
-      <BackLink href="/" label="All projects" />
+      <ProjectNav name={p.config.name} base={base} q={q} active="overview" />
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-muted">
@@ -42,10 +43,6 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           </p>
           <h1 className="text-[34px] font-extrabold leading-tight">{p.config.name}</h1>
         </div>
-        <nav aria-label="Project" className="flex flex-wrap gap-2.5">
-          <ButtonLink href={`${base}/toolbox${q}`} className="rounded-full">Toolbox</ButtonLink>
-          <ButtonLink href={`${base}/history${q}`} className="rounded-full">History</ButtonLink>
-        </nav>
       </header>
 
       <RequestsCard repo={p.repo} requests={p.extras.requests} stages={stages} answerable={answerable} />

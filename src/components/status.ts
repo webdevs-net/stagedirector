@@ -21,16 +21,22 @@ export const HEALTH_LABEL: Record<Health, { text: (p: ProjectView) => string; co
 
 /** Color for each stage bar (one per stage). */
 export function barColors(p: ProjectView): string[] {
-  const h = healthOf(p);
-  return p.config.stages.map((st, i) => {
-    if (i === 0) return "#c8d3df";
-    const last = i === p.config.stages.length - 1;
-    const status = p.stages.find((s) => s.stageId === st.id);
+  // A progress bar for the newest change: lit up to the stage it has reached,
+  // grey after that. Problems (updating, failed check, out of sync) override.
+  const stages = p.config.stages;
+  const last = stages.length - 1;
+  const statusOf = (id: string) => p.stages.find((s) => s.stageId === id);
+  let reached = last;
+  if (p.waiting.length) reached = last - 1;
+  for (let i = 1; i < last; i++) {
+    if ((statusOf(stages[i].id)?.behindBy ?? 0) > 0) { reached = Math.min(reached, i - 1); break; }
+  }
+  return stages.map((st, i) => {
+    const status = statusOf(st.id);
     if (status?.outOfSync.length) return "#e59a1a";
-    if (h === "fail" && !last) return "#d64545";
-    if (h === "busy" && !last) return "#2563b8";
-    if (last && p.waiting.length) return "#2563b8";
-    return "#14a39d";
+    if (p.busy?.stageId === st.id || status?.running) return "#2563b8";
+    if (p.extras.failedCheck && i > 0 && i < last) return "#d64545";
+    return i <= reached ? "#14a39d" : "#c8d3df";
   });
 }
 
