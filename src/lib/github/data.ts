@@ -215,7 +215,12 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   }
 
   if (!gh) return { ok: false, status: 503, error: "GitHub is not connected (sample mode)" };
-  const commit = input.commit ?? stages[idx].commit;
+  let commit = input.commit ?? stages[idx].commit;
+  // A backup or a cache clear does not move code, so it needs no record of what is on the stage:
+  // the workflow only wants a commit to check out its scripts. Use the source branch's tip.
+  if (!commit && (input.action === "snapshot" || input.action === "clear-cache")) {
+    commit = (await gh.rest.repos.getBranch({ ...splitRepo(input.repo), branch: config.branch })).data.commit.sha;
+  }
   if (!commit) return { ok: false, status: 400, error: "nothing on that stage yet" };
   await startRun(gh, input.repo, config.branch, {
     stage: input.stageId,
