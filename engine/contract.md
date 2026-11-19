@@ -61,10 +61,11 @@ without input, and exits `0` only when it did.
 
 ## Smoke test
 
-After exit `0` the workflow fetches `url` + each `smokeTest` path. 2xx passes. 401
-passes only on stages that are not the last (password-protected staging); set the
-environment secret `STAGEDIRECTOR_BASIC_AUTH` (`user:password`) to test behind the
-password instead. Anything else fails and triggers the Safety net. A project's own
+After exit `0` the workflow fetches `url` + each `smokeTest` path. Only 2xx passes.
+A password-protected stage (for example staging behind HTTP Basic auth) needs the
+repo or environment secret `STAGEDIRECTOR_BASIC_AUTH` (`user:password`) so the smoke
+test can sign in and really check the pages. A 401 always fails: a page the test
+could not open was not checked. Anything else fails too and triggers the Safety net. A project's own
 script may also smoke-test (and exit `1`), which is fine.
 
 ## `status --json`

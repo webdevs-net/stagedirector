@@ -408,7 +408,13 @@ jobs:
               say "  $code $base$p"
               case "$code" in
                 2??) ;;
-                401) [ "$IS_LAST" = false ] || bad=1 ;; # 401 = password-protected staging; never OK on the last stage
+                401)
+                  bad=1
+                  if [ -z "$BASIC_AUTH" ]; then
+                    say "  This page is behind a password, so it was not checked. Add the repo or environment secret STAGEDIRECTOR_BASIC_AUTH as user:password so the smoke test can sign in."
+                  else
+                    say "  The STAGEDIRECTOR_BASIC_AUTH password was refused."
+                  fi ;;
                 *) bad=1 ;;
               esac
             done < <(jq -r '.smokeTest[]?' <<<"$STAGE_JSON")
