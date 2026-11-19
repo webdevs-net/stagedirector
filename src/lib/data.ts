@@ -4,6 +4,7 @@
 import "server-only";
 import * as mock from "./mock";
 import * as gh from "./github";
+import * as runs from "./github/runs";
 import type { ActivityEvent, ProjectSummary } from "./types";
 
 export type { Viewer, ProjectExtras, ProjectView, RunKind, ActiveRun } from "./mock";
@@ -67,24 +68,49 @@ export async function getActivity(repoSlug: string): Promise<ActivityEvent[]> {
   return gh.getActivity(slugToRepo(repoSlug));
 }
 
-export async function getRunLog(): Promise<string[]> {
-  // TODO: read the real run log (gh.getRunLog(repo, runId)) once runs carry a GitHub run id.
-  return mock.getRunLog();
+/**
+ * The technical log for the Updating screen: the newest run on that stage
+ * (GitHub mode), or the built-in sample log.
+ */
+export async function getRunLog(repoSlug?: string, stageId?: string): Promise<{ lines: string[]; url: string | null; sample: boolean }> {
+  if (!live() || !repoSlug || !stageId) return { lines: await mock.getRunLog(), url: null, sample: true };
+  const run = await runs.latestRunFor(slugToRepo(repoSlug), stageId);
+  if (!run) return { lines: ["No run on this stage yet."], url: null, sample: false };
+  const lines = await runs.runLogLines(slugToRepo(repoSlug), run.id);
+  return { lines: lines.length ? lines : ["The log is not ready yet. It appears a few seconds after each step."], url: run.url, sample: false };
 }
 
-// Runs: the run window and overlay still use the in-memory run tracker.
-// In GitHub mode, starting a run also triggers the real workflow through the
-// permission-checked performAction; polling real run progress is the next step.
-export const getActiveRuns = mock.getActiveRuns;
-export const stopRun = mock.stopRun;
+// Runs: in GitHub mode the run window, overlay and Updating screen follow the
+// real workflow run (polled through src/lib/github/runs.ts). Without
+// credentials they use the 20-second demo run from ./mock.
+export async function getActiveRuns(): Promise<mock.ActiveRun[]> {
+  return live() ? runs.activeRuns() : mock.getActiveRuns();
+}
+
+/** Stops a run. Returns an error message, or null when it was stopped. */
+export async function stopRun(runId: string): Promise<string | null> {
+  if (!live()) {
+    await mock.stopRun(runId);
+    return null;
+  }
+  const login = await gh.currentLogin();
+  if (!login) return "Sign in with GitHub first";
+  const r = await runs.findRun(runId);
+  const id = runs.runIdOf(runId);
+  if (!r || !id) return "That run has not started on GitHub yet; try again in a few seconds";
+  const res = await gh.performAction(login, { repo: r.repo, stageId: r.stageId, action: "stop", runId: id });
+  runs.forgetRuns(r.repo);
+  return res.ok ? null : res.error;
+}
 
 export async function startRun(repo: string, stageId: string, kind: mock.RunKind): Promise<mock.ActiveRun | { error: string }> {
-  if (live()) {
-    const login = await gh.currentLogin();
-    if (!login) return { error: "Sign in with GitHub first" };
-    const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : "deploy";
-    const r = await gh.performAction(login, { repo, stageId, action });
-    if (!r.ok) return { error: r.error };
-  }
-  return mock.startRun(repo, stageId, kind);
+  if (!live()) return mock.startRun(repo, stageId, kind);
+  const login = await gh.currentLogin();
+  if (!login) return { error: "Sign in with GitHub first" };
+  if ((await runs.activeRuns()).some((r) => r.repo === repo && r.state === "running")) return { error: "Something is already running here" };
+  const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : "deploy";
+  const r = await gh.performAction(login, { repo, stageId, action });
+  if (!r.ok) return { error: r.error };
+  if (r.recordedAs === "request") return { error: "Saved as a request; a person needs to OK it" };
+  return runs.notePending(repo, stageId, kind);
 }

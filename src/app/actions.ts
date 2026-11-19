@@ -15,7 +15,11 @@ export async function listRunsAction() {
 }
 
 export async function stopRunAction(runId: string) {
-  await data.stopRun(runId);
+  return data.stopRun(runId);
+}
+
+export async function runLogAction(repoSlug: string, stageId: string) {
+  return data.getRunLog(repoSlug, stageId);
 }
 
 export async function approveForLive(repo: string, commit: string): Promise<{ ok: boolean }> {

@@ -154,6 +154,7 @@ export interface RunInfo {
   state: RunState;
   url: string;
   startedAt: string;
+  updatedAt?: string;
 }
 
 const TITLE = /^stagedirector (\S+) (\S+) (\S+) by (\S+)/;
@@ -184,6 +185,7 @@ export async function recentRuns(gh: Octokit, repo: string, perPage = 20): Promi
         state: runState(r.status, r.conclusion),
         url: r.html_url,
         startedAt: r.run_started_at ?? r.created_at,
+        updatedAt: r.updated_at,
       };
     });
   } catch (e) {

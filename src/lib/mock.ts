@@ -267,6 +267,10 @@ export interface ActiveRun {
   progress: number;       // 0..100
   state: "running" | "passed" | "failed" | "stopped";
   finishedAt: number | null;
+  /** GitHub Actions run id (GitHub mode only). */
+  runId?: number;
+  /** Link to the run on GitHub (GitHub mode only). */
+  url?: string;
 }
 
 const RUN_MS = 20_000;
