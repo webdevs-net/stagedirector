@@ -18,7 +18,7 @@ export function useRuns() {
   return useContext(Ctx);
 }
 
-export function RunsProvider({ children, idleMs = 300_000 }: { children: ReactNode; idleMs?: number }) {
+export function RunsProvider({ children, idleMs = 60_000 }: { children: ReactNode; idleMs?: number }) {
   const [runs, setRuns] = useState<ActiveRun[]>([]);
 
   const refresh = useCallback(async () => {

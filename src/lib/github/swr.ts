@@ -3,7 +3,7 @@
 // the very first read of a key waits for GitHub. Never used for permission
 // checks: performAction and friends read fresh data.
 
-interface Slot<T> { value?: T; at: number; pending?: Promise<T>; load?: () => Promise<T> }
+interface Slot<T> { value?: T; at: number; pending?: Promise<T>; load?: () => Promise<T>; readAt?: number }
 
 const g = globalThis as unknown as { __sdSwr?: Map<string, Slot<unknown>> };
 const slots: Map<string, Slot<unknown>> = (g.__sdSwr ??= loadFromDisk());
@@ -65,6 +65,7 @@ export async function swr<T>(key: string, fresh: number, load: () => Promise<T>,
   const slot = (slots.get(key) as Slot<T> | undefined) ?? { at: 0 };
   slots.set(key, slot);
   slot.load = load;
+  slot.readAt = Date.now();
   const refresh = () =>
     (slot.pending ??= load()
       .then((v) => {
@@ -107,10 +108,11 @@ export function invalidate(part: string) {
  * Refresh button). Pages keep being served from the old values meanwhile, so
  * clicks stay instant. Skipped while the GitHub rate limit is nearly used up.
  */
-export async function revalidateAll(timeoutMs = 15_000): Promise<void> {
+export async function revalidateAll(timeoutMs = 15_000, readWithinMs = 5 * 60_000): Promise<void> {
   if (rateLimited()) return;
   const work = [...slots.values()].map(async (slot) => {
-    if (!slot.load) return;
+    // Only what an open page read recently; never warm data nobody is looking at.
+    if (!slot.load || Date.now() - (slot.readAt ?? 0) > readWithinMs) return;
     try {
       const v = await slot.load();
       Object.assign(slot, { value: v, at: Date.now() });

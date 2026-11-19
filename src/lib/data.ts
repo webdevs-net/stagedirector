@@ -106,12 +106,12 @@ export function githubLimitedUntil(): number | null {
 
 /**
  * How often open pages re-read GitHub in the background, in seconds.
- * STAGEDIRECTOR_POLL_SECONDS (default 300 = 5 min, minimum 15). Clicks and the
+ * STAGEDIRECTOR_POLL_SECONDS (default 60, minimum 15). Only a visible page polls; the server never calls GitHub on its own. Clicks and the
  * Refresh button still update at once; a run that is going is followed every 2 s.
  */
 export function pollSeconds(): number {
   const n = Number(process.env.STAGEDIRECTOR_POLL_SECONDS);
-  return Number.isFinite(n) && n > 0 ? Math.max(15, n) : 300;
+  return Number.isFinite(n) && n > 0 ? Math.max(15, n) : 60;
 }
 
 /** Timed poll / Refresh button: fetch fresh GitHub data into the cache before the page re-renders. */

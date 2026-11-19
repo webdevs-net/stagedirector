@@ -27,7 +27,7 @@ function ago(ms: number): string {
  * Background polls are silent; only a pressed Refresh shows "Checking GitHub…".
  * GitHub answers unchanged polls with 304 (see src/lib/github/etag.ts), so this is cheap.
  */
-export function LiveRefresh({ demo = false, limitedUntil = null, everyMs = 300_000 }: { demo?: boolean; limitedUntil?: number | null; everyMs?: number }) {
+export function LiveRefresh({ demo = false, limitedUntil = null, everyMs = 60_000 }: { demo?: boolean; limitedUntil?: number | null; everyMs?: number }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
