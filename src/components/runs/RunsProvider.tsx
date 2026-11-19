@@ -7,11 +7,11 @@ import type { ActiveRun, RunKind } from "@/lib/data";
 interface RunsCtx {
   runs: ActiveRun[];
   start: (repo: string, stageId: string, kind: RunKind) => Promise<string | null>;
-  stop: (runId: string) => Promise<void>;
+  stop: (runId: string) => Promise<string | null>;
   runFor: (repo: string) => ActiveRun | undefined;
 }
 
-const Ctx = createContext<RunsCtx>({ runs: [], start: async () => null, stop: async () => {}, runFor: () => undefined });
+const Ctx = createContext<RunsCtx>({ runs: [], start: async () => null, stop: async () => null, runFor: () => undefined });
 
 export function useRuns() {
   return useContext(Ctx);
@@ -46,8 +46,9 @@ export function RunsProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(
     async (id: string) => {
-      await stopRunAction(id);
+      const err = await stopRunAction(id);
       await refresh();
+      return err;
     },
     [refresh],
   );

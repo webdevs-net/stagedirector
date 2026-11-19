@@ -6,9 +6,9 @@ import { Icon } from "../ui";
 import { runTitle } from "./RunWindow";
 import { useRuns } from "./RunsProvider";
 
-export function RunDetails({ repo, stageName }: { repo: string; stageName: string }) {
+export function RunDetails({ repo, stageId, stageName, demo }: { repo: string; stageId?: string; stageName: string; demo?: boolean }) {
   const { runs } = useRuns();
-  const r = [...runs].reverse().find((x) => x.repo === repo);
+  const r = [...runs].reverse().find((x) => x.repo === repo && (!stageId || x.stageId === stageId));
   const steps = r?.steps ?? RUN_STEPS;
   const current = r ? (r.state === "running" ? r.step : steps.length) : 2;
   const pct = r?.progress ?? 60;
@@ -19,8 +19,8 @@ export function RunDetails({ repo, stageName }: { repo: string; stageName: strin
         <Icon name={running ? "refresh" : r?.state === "failed" ? "alert" : "check"} size={40} className={running ? "run-spin" : ""} />
       </div>
       <h1 className="text-3xl font-extrabold">{r ? runTitle(r) : `Updating ${stageName.toLowerCase()}…`}</h1>
-      {!r && <p className="text-sm font-bold text-muted">(Sample run — press Update on the project page to start a real one.)</p>}
-      <p className="text-[17px] text-muted">About 20 seconds. You can leave this page; the little window at the bottom keeps you posted.</p>
+      {!r && <p className="text-sm font-bold text-muted">{demo ? "(Sample run — press Update on the project page to start a real one.)" : "(Nothing is running on this stage right now.)"}</p>}
+      <p className="text-[17px] text-muted">{demo ? "About 20 seconds." : "Usually a minute or two."} You can leave this page; the little window at the bottom keeps you posted.</p>
       <div role="progressbar" aria-label="Progress" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className="h-3.5 w-full overflow-hidden rounded-full bg-[#e3e9f0]">
         <div className="h-full rounded-full bg-blue transition-[width] duration-700" style={{ width: `${pct}%` }} />
       </div>

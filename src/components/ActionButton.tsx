@@ -30,7 +30,8 @@ export function ActionButton(props: Props) {
     }
     if (props.act === "stop") {
       const r = runFor(repo);
-      if (r) await stop(r.id);
+      const e = r ? await stop(r.id) : null;
+      if (e) return setErr(e);
     }
     if (next) router.push(next);
   };
