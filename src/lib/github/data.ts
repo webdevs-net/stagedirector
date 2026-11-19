@@ -225,3 +225,8 @@ export async function getRunLog(repo: string, runId: number): Promise<string | n
   if (!gh || !configuredRepos().includes(repo)) return null;
   return runLog(gh, repo, runId);
 }
+
+/** Records a dashboard event (e.g. check results) in the project's activity log. */
+export async function recordEvent(repo: string, event: Omit<ActivityEvent, "id">): Promise<ActivityEvent> {
+  return storeFor(getOctokit()).append(repo, event);
+}

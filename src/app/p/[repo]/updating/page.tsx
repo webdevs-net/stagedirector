@@ -13,7 +13,7 @@ export default async function UpdatingPage({ params, searchParams }: PageProps) 
   return (
     <Page width="max-w-[640px]">
       <BackLink href={`${base}${q}`} label={p.config.name} />
-      <RunDetails repo={p.repo} stageId={stage.id} stageName={stage.name} demo={log.sample} />
+      <RunDetails repo={p.repo} stageId={stage.id} stageName={stage.name} demo={log.sample} checkable={!!stage.url} />
       <RunLog repo={p.repo} repoSlug={slug} stageId={stage.id} initial={log} />
     </Page>
   );

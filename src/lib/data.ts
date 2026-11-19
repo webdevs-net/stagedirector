@@ -5,7 +5,8 @@ import "server-only";
 import * as mock from "./mock";
 import * as gh from "./github";
 import * as runs from "./github/runs";
-import type { ActivityEvent, ProjectSummary } from "./types";
+import type { ActivityEvent, CheckResult, ProjectSummary } from "./types";
+import { checksFor, runChecks, summarizeResults } from "./checks";
 
 export type { Viewer, ProjectExtras, ProjectView, RunKind, ActiveRun } from "./mock";
 export { RUN_STEPS, repoToSlug } from "./shared";
@@ -125,4 +126,39 @@ export async function pinStage(repo: string, stageId: string, pin: boolean): Pro
   if (!login) return "Sign in with GitHub first";
   const r = await gh.performAction(login, { repo, stageId, action: pin ? "pin" : "unpin" });
   return r.ok ? null : r.error;
+}
+
+/**
+ * Runs the project's checks on one stage and stores the result as a `check`
+ * activity event. `when` = "before" (review step) or "after" (a finished run).
+ */
+export async function runStageChecks(repoSlug: string, stageId: string, when: "before" | "after"): Promise<{ results: CheckResult[]; error?: string }> {
+  const p = await getProject(repoSlug);
+  if (!p) return { results: [], error: "No such project" };
+  const stage = p.config.stages.find((s) => s.id === stageId);
+  if (!stage?.url) return { results: [], error: "This stage has no address to check" };
+  const checks = checksFor(p.config, stageId);
+  if (!checks.length) return { results: [] };
+  const isLast = p.config.stages.at(-1)?.id === stageId;
+  let results: CheckResult[];
+  let actor: string;
+  if (!live()) {
+    // Demo: no network. Everything passes unless the sample project is the "failing" one.
+    results = checks.map((c) => ({ name: c.name, ok: !p.extras.failedCheck, detail: p.extras.failedCheck ? `${c.pages[0]} answered 500` : `${c.pages.length} ${c.pages.length === 1 ? "page" : "pages"} fine` }));
+    actor = (await mock.getViewer()).login;
+  } else {
+    results = await runChecks(stage.url, checks, isLast);
+    actor = (await gh.currentLogin()) ?? "auto";
+  }
+  const event: Omit<ActivityEvent, "id"> = {
+    at: new Date().toISOString(),
+    actor,
+    action: "check",
+    stageId,
+    commit: p.stages.find((s) => s.stageId === stageId)?.commit ?? undefined,
+    result: results.every((r) => r.ok) ? "passed" : "failed",
+    note: summarizeResults(stage.name, results, when),
+  };
+  await (live() ? gh.recordEvent(p.repo, event) : mock.recordEvent(p.repo, event)).catch(() => undefined);
+  return { results };
 }
