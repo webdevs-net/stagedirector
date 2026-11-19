@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { FakeGitHub, seedTestRepo } from "./testing/fake-github";
 
-vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => "owner", authConfigured: false }));
+vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => "owner", currentGithubToken: async () => null, authConfigured: false }));
 
 const REPO = "acme/site";
 let fake: FakeGitHub;

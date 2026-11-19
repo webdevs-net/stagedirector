@@ -25,7 +25,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
 
         <ul className="flex flex-col gap-2 rounded-[20px] bg-bg px-5 py-4 text-[17px]">
           {p.waiting.map((c) => (
-            <li key={c.pr} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
+            <li key={c.pr || c.commit} className="flex items-center gap-2.5"><Icon name="check" className="text-[#0f6f6b]" /> {c.title}</li>
           ))}
         </ul>
 

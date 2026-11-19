@@ -63,6 +63,7 @@ interface Repo {
   deployments: Deployment[];
   refs: Record<string, string>;
   runs: FakeRun[];
+  statuses: { sha: string; context: string; state: string; creator: string; description: string }[];
 }
 
 const iso = (t = Date.now()) => new Date(t).toISOString();
@@ -86,6 +87,7 @@ export class FakeGitHub {
       deployments: [],
       refs: {},
       runs: [],
+      statuses: [],
     };
     this.repos.set(init.name, r);
     for (const [stage, sha] of Object.entries(init.deployed ?? {})) this.recordDeploy(r, stage, sha, "seed", `backup-${sha.slice(0, 7)}`);
@@ -151,6 +153,10 @@ export class FakeGitHub {
     if (pinned && action !== "pin" && action !== "unpin" && action !== "clear-cache") {
       result = "failure";
       run.log.push(`### Refused\nStage '${stage}' is pinned. Unpin it first.`);
+    } else if (action === "deploy" && stage === "live" && !r.statuses.some((x) => x.sha === commit && x.context === "stagedirector/approval/live" && x.state === "success")) {
+      // Like the engine's live gate: the approval must be a commit status on that exact commit.
+      result = "failure";
+      run.log.push(`### Refused\nCommit ${commit.slice(0, 7)} has no approval for live.`);
     } else if (result === "success") {
       if (action === "deploy") this.recordDeploy(r, stage, commit, requested_by, `backup-${this.id()}`);
       if (action === "pin") r.refs[`stagedirector/pins/${stage}`] = commit;
@@ -176,6 +182,11 @@ export class FakeGitHub {
 
   latestRun(repo: string): FakeRun | undefined {
     return this.repo(repo).runs[0];
+  }
+
+  private commitJson(r: Repo, sha: string) {
+    const pr = r.prs.find((p) => p.mergeSha === sha);
+    return { sha, html_url: `https://github.com/${r.name}/commit/${sha}`, commit: { message: pr ? `Merge pull request #${pr.number}` : `Commit ${sha.slice(0, 7)}\n\nDirect change.` } };
   }
 
   // ---- HTTP ----
@@ -253,7 +264,17 @@ export class FakeGitHub {
       const a = r.commits.indexOf(x[1]);
       const b = r.commits.indexOf(x[2]);
       if (a < 0 || b < 0) return this.send(res, 404, { message: "Not Found" });
-      return this.send(res, 200, { ahead_by: Math.max(0, b - a), behind_by: Math.max(0, a - b), commits: b > a ? r.commits.slice(a + 1, b + 1).map((sha) => ({ sha })) : [] });
+      return this.send(res, 200, { ahead_by: Math.max(0, b - a), behind_by: Math.max(0, a - b), commits: b > a ? r.commits.slice(a + 1, b + 1).map((sha) => this.commitJson(r, sha)) : [] });
+    }
+    if (m === "POST" && (x = /^\/statuses\/([0-9a-f]{40})$/.exec(rest))) {
+      const b = await this.body(req);
+      const st = { sha: x[1], context: String(b.context), state: String(b.state), creator: this.self, description: String(b.description ?? "") };
+      r.statuses.push(st);
+      return this.send(res, 201, st);
+    }
+    if (m === "GET" && rest === "/commits") {
+      const end = r.commits.indexOf(q("sha") ?? r.commits.at(-1)!);
+      return this.send(res, 200, r.commits.slice(0, end + 1).reverse().slice(0, Number(q("per_page") ?? 30)).map((sha) => this.commitJson(r, sha)));
     }
     if (m === "GET" && (x = /^\/commits\/([0-9a-f]+)\/pulls$/.exec(rest))) {
       const sha = x[1];

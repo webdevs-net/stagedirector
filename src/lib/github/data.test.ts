@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => null, authConfigured: false }));
+vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => null, currentGithubToken: async () => null, authConfigured: false }));
 
 describe("sample mode (no GitHub credentials)", () => {
   beforeEach(() => {

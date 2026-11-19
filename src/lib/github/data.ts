@@ -3,8 +3,9 @@ import type { Octokit } from "@octokit/rest";
 import type { ActivityEvent, Approval, ProjectConfig, ProjectSummary, PushRequest, Role, StageStatus } from "@/lib/types";
 import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
 import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
-import { configuredRepos, getOctokit, selfLogin, splitRepo } from "./client";
-import { changesBetween, defaultBranchHead, readConfig, recentRuns, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { configuredRepos, dashboardIsApp, getOctokit, personOctokit, selfLogin, splitRepo } from "./client";
+import * as authMod from "@/lib/auth/auth";
+import { changesBetween, defaultBranchHead, readConfig, recentRuns, resolveRunStage, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 
@@ -51,7 +52,7 @@ async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login
     stages,
     waiting,
     needsMe,
-    busy: active ? { by: active.by ?? "someone", stageId: active.stageId ?? "" } : null,
+    busy: active ? { by: active.by ?? "someone", stageId: resolveRunStage(config, active.stageId) ?? "" } : null,
   };
 }
 
@@ -85,7 +86,8 @@ export async function getActivity(repo: string, limit = 50): Promise<ActivityEve
     return [...extra, ...(sampleActivity[repo] ?? [])].slice(0, limit);
   }
   if (!configuredRepos().includes(repo)) return [];
-  const [records, runs] = await Promise.all([storeFor(gh).list(repo, limit), recentRuns(gh, repo, limit)]);
+  const [records, rawRuns, config] = await Promise.all([storeFor(gh).list(repo, limit), recentRuns(gh, repo, limit), loadConfig(gh, repo)]);
+  const runs = rawRuns.map((r) => ({ ...r, stageId: config ? resolveRunStage(config, r.stageId) : r.stageId }));
   const fromRuns: ActivityEvent[] = runs.map((r) => ({
     id: `run-${r.id}`,
     at: r.startedAt,
@@ -199,8 +201,25 @@ export async function performAction(actor: string, input: ActionInput): Promise<
     return { ok: true, recordedAs: "request", event };
   }
 
+  // GitHub must see the person for code-owner stages (the engine checks who made the approval
+  // and who started the run). Use their own token; the dashboard's identity only when it is
+  // itself a person's token (local testing).
+  const codeOwnerStage = config.stages[idx].pushers === "code-owners";
+  const personToken = codeOwnerStage ? await (authMod.currentGithubToken?.() ?? null) : null;
+  const asPerson = personToken ? personOctokit(personToken) : !dashboardIsApp() ? gh : null;
+  if (codeOwnerStage && !asPerson && gh && (input.action === "approve" || input.action === "deploy" || input.action === "rollback")) {
+    return { ok: false, status: 401, error: `Sign out and in again so Stage Director can act as you on ${config.stages[idx].name} (GitHub only accepts it from you, not from the dashboard)` };
+  }
+
   if (input.action === "approve") {
     const a: Approval = { commit: input.commit!, stageId: input.stageId, by: actor, at };
+    // The record the engine's live gate checks (engine/contract.md): a commit status made by the code owner.
+    if (asPerson) {
+      await asPerson.rest.repos.createCommitStatus({
+        ...splitRepo(input.repo), sha: input.commit!, state: "success",
+        context: `stagedirector/approval/${input.stageId}`, description: `Approved in Stage Director by ${actor}`.slice(0, 140),
+      });
+    }
     const event = await store.append(input.repo, { ...base, action: "approve" }, a);
     return { ok: true, recordedAs: "action", event };
   }
@@ -220,7 +239,7 @@ export async function performAction(actor: string, input: ActionInput): Promise<
   if (!gh) return { ok: false, status: 503, error: "GitHub is not connected (sample mode)" };
   const commit = input.commit ?? stages[idx].commit;
   if (!commit) return { ok: false, status: 400, error: "nothing on that stage yet" };
-  await startRun(gh, input.repo, config.branch, {
+  await startRun(codeOwnerStage && asPerson ? asPerson : gh, input.repo, config.branch, {
     stage: input.stageId,
     commit,
     action: RUN_ACTIONS[input.action as keyof typeof RUN_ACTIONS],

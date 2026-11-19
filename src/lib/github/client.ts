@@ -72,3 +72,14 @@ export function resetGithubClient() {
   cached = undefined;
   identity = undefined;
 }
+
+/** Octokit acting as a person (their own OAuth token), for things GitHub must attribute to them. */
+export function personOctokit(token: string): Octokit {
+  return new Octokit({ auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
+}
+
+/** True when the dashboard's own identity is a GitHub App (a bot), not a person's token. */
+export function dashboardIsApp(): boolean {
+  const e = process.env;
+  return Boolean(e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID);
+}

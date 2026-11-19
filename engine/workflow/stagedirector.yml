@@ -28,6 +28,15 @@
 #      this file on a branch.
 
 name: Stage Director
+# The dashboard reads what a run is from this title (src/lib/github/repo.ts parseRunTitle):
+#   stagedirector <action> <stage> <commit> by <requested_by>
+# A push says "auto" for the stage and the person (the gate picks the trigger: auto stage).
+run-name: >-
+  stagedirector
+  ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'deploy' }}
+  ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'auto' }}
+  ${{ github.event_name == 'workflow_dispatch' && inputs.commit || github.sha }}
+  by ${{ github.event_name == 'workflow_dispatch' && inputs.requested_by || 'auto' }}
 
 on:
   push:

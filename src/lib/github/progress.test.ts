@@ -35,4 +35,10 @@ describe("run progress mapping", () => {
   it("handles a run with no jobs yet", () => {
     expect(mapProgress([]).step).toBe(0);
   });
+
+  it("does not jump ahead while the deploy job waits for a runner", () => {
+    const gate = { name: "Check rules", status: "completed", conclusion: "success", steps: ["Set up job", "Check out", "Apply rules", "Post Check out", "Complete job"].map((name) => ({ name, status: "completed", conclusion: "success" })) };
+    const p = mapProgress([gate, { name: "deploy staging", status: "queued", conclusion: null, steps: [] }]);
+    expect(p.progress).toBeLessThan(40);
+  });
 });

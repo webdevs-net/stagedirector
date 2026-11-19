@@ -4,7 +4,7 @@ import type { ActiveRun, RunKind } from "@/lib/mock";
 import type { ProjectConfig } from "@/lib/types";
 import { configuredRepos, getOctokit, splitRepo } from "./client";
 import { mapProgress, type GhJob } from "./progress";
-import { readConfig, recentRuns, runLog, type RunInfo } from "./repo";
+import { readConfig, recentRuns, resolveRunStage, runLog, type RunInfo } from "./repo";
 
 // Live run progress from GitHub Actions. The browser polls every second while
 // something runs; answers are cached for a few seconds per repo so GitHub's
@@ -56,7 +56,8 @@ async function jobsOf(gh: Octokit, repo: string, runId: number): Promise<GhJob[]
 }
 
 export function toActiveRun(r: RunInfo, config: ProjectConfig, repo: string, jobs: GhJob[] | null, finishedAt: number | null): ActiveRun | null {
-  const stage = config.stages.find((s) => s.id === r.stageId);
+  const stageId = resolveRunStage(config, r.stageId);
+  const stage = config.stages.find((s) => s.id === stageId);
   if (!stage) return null;
   const kind = kindOf(r.action, config, stage.id);
   if (!kind) return null;

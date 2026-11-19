@@ -41,9 +41,11 @@ export function mapProgress(jobs: GhJob[], steps: string[] = RUN_STEPS): Progres
   const all = jobs.flatMap((j) => (j.steps ?? []).map((s) => ({ ...s, job: j.name })));
   // Before GitHub reports steps, show the first step with a sliver of progress.
   if (all.length === 0) return { step: 0, progress: jobs.length ? 5 : 2, steps };
-  // The run job is only listed once the gate finishes: count it as ~8 more steps so the bar does not jump to 100%.
-  const runJobListed = jobs.some((j) => !/check rules/i.test(j.name));
-  const total = all.length + (runJobListed ? 0 : 8);
+  // The run job appears only after the gate, and at first without steps (waiting for a runner):
+  // count it as ~10 more steps until GitHub lists them, so the bar does not jump ahead.
+  const runJobs = jobs.filter((j) => !/check rules/i.test(j.name));
+  const unknown = runJobs.length === 0 ? 1 : runJobs.filter((j) => !j.steps?.length).length;
+  const total = all.length + unknown * 10;
   const done = all.filter((s) => s.status === "completed").length;
   const current = all.find((s) => s.status === "in_progress") ?? all.find((s) => s.status !== "completed");
   let step = current ? plainStepOf(current.job, current.name) : steps.length - 1;

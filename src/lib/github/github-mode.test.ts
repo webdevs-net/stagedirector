@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeGitHub, seedTestRepo, sha } from "./testing/fake-github";
 
-vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => null, authConfigured: false }));
+vi.mock("@/lib/auth/auth", () => ({ currentLogin: async () => null, currentGithubToken: async () => null, authConfigured: false }));
 
 const REPO = "acme/site";
 let fake: FakeGitHub;
@@ -129,7 +129,10 @@ describe("GitHub mode (fake GitHub)", () => {
     expect(go.ok).toBe(true);
     const run = fake.latestRun(REPO)!;
     expect(run.inputs.stage).toBe("live");
+    // The approval is also the commit status the engine's live gate checks.
+    expect(fake.repo(REPO).statuses).toContainEqual(expect.objectContaining({ sha: sha(4), context: "stagedirector/approval/live", state: "success" }));
     fake.finish(REPO, run.id);
+    expect(fake.run(REPO, run.id).conclusion).toBe("success");
     expect(fake.onStage(REPO, "live")).toBe(sha(4));
     expect((await data.getProject(REPO))!.waiting).toEqual([]);
   });
@@ -167,5 +170,18 @@ describe("GitHub mode (fake GitHub)", () => {
       payload: { stagedirector: 1, event: { at: new Date().toISOString(), actor: "owner", action: "approve", stageId: "live", commit: sha(4) }, approval: { commit: sha(4), stageId: "live", by: "owner", at: new Date().toISOString() } },
     } as never);
     expect((await data.performAction("owner", { repo: REPO, stageId: "live", action: "deploy", commit: sha(4) })).ok).toBe(false);
+  });
+});
+
+describe("waiting changes", () => {
+  it("lists direct commits too, and everything when live was never pushed", async () => {
+    const { data } = await load();
+    fake.repos.clear();
+    const r = seedTestRepo(fake, REPO);
+    r.deployments = r.deployments.filter((d) => d.environment !== "live"); // live never pushed
+    const p = (await data.getProject(REPO))!;
+    expect(p.waiting.filter((c) => c.pr).map((c) => c.pr)).toEqual([11, 12]);
+    expect(p.waiting.filter((c) => !c.pr).map((c) => c.commit)).toEqual([sha(1), sha(2)]);
+    expect(p.waiting.find((c) => c.commit === sha(2))!.title).toBe("Commit 0202020");
   });
 });
