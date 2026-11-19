@@ -25,6 +25,7 @@ export default async function HomePage() {
       <details>
         <summary className="flex min-h-12 items-center justify-center font-bold text-muted">Engines and servers</summary>
         <div className="flex flex-col gap-1.5 rounded-[20px] bg-white px-5 py-4 text-[15px] text-soft">
+          <a href="/usage" className="font-bold text-blue underline">GitHub API usage</a>
           {isDemo() ? (
             <>
               <div>ovh1 runner · running · serves {projects.length} projects (demo)</div>

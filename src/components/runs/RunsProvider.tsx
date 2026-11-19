@@ -40,7 +40,7 @@ export function RunsProvider({ children, idleMs = 60_000 }: { children: ReactNod
     // Follow a run closely while one is going; otherwise check rarely, and never in a hidden tab.
     const t = setInterval(() => {
       if (document.visibilityState === "visible") refresh();
-    }, anyRunning ? 2000 : idleMs);
+    }, anyRunning ? 5000 : idleMs);
     return () => clearInterval(t);
   }, [refresh, anyRunning, idleMs]);
 

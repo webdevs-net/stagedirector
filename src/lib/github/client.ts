@@ -1,37 +1,27 @@
 import "server-only";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
-import { EtagCache } from "./etag";
+import { Gateway } from "./gateway";
 
-/** Shared across requests so polls reuse ETags (304s are free against the rate limit). */
-export const etagCache = new EtagCache();
-
-/** GitHub's hourly API budget for our token, from the headers of the latest response. */
-export const rateLimit: { remaining: number | null; resetAt: number | null } = { remaining: null, resetAt: null };
-
-function noteLimit(headers: Record<string, unknown> | undefined) {
-  const rem = Number(headers?.["x-ratelimit-remaining"]);
-  const reset = Number(headers?.["x-ratelimit-reset"]);
-  if (Number.isFinite(rem)) rateLimit.remaining = rem;
-  if (Number.isFinite(reset)) rateLimit.resetAt = reset * 1000;
+/** Background GitHub calls allowed per minute (pages, polls). Button presses are never capped. */
+export function perMinute(): number {
+  const n = Number(process.env.STAGEDIRECTOR_GITHUB_PER_MINUTE);
+  return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
+const gg = globalThis as unknown as { __sdGateway?: Gateway };
+/** The one gateway (survives dev hot reloads). See gateway.ts. */
+export const gateway: Gateway = (gg.__sdGateway ??= new Gateway({ perMinute: perMinute(), burst: Math.max(40, perMinute() * 4) }));
+export const etagCache = gateway.etags;
+export const rateLimit = gateway.limit;
 /** True while the budget is nearly gone: background refreshes pause until it resets. */
-export function rateLimited(): boolean {
-  return rateLimit.remaining !== null && rateLimit.remaining < 100 && (rateLimit.resetAt ?? 0) > Date.now();
-}
+export const rateLimited = (): boolean => gateway.lowBudget();
 
-function withEtags(gh: Octokit): Octokit {
-  gh.hook.wrap("request", async (request, options) => {
+function throughGateway(gh: Octokit): Octokit {
+  gh.hook.wrap("request", (request, options) => {
+    const o = options as { method?: string; url?: string };
     const { method, url } = gh.request.endpoint(options as never) as { method: string; url: string };
-    try {
-      const res = (await etagCache.wrap(request as never, options as never, `${method} ${url}`)) as { headers?: Record<string, unknown> };
-      noteLimit(res.headers);
-      return res as never;
-    } catch (e) {
-      noteLimit((e as { response?: { headers?: Record<string, unknown> } }).response?.headers);
-      throw e;
-    }
+    return gateway.handle(request as never, options as never, `${method} ${o.url ?? url}`, `${method} ${url}`) as never;
   });
   return gh;
 }
@@ -39,7 +29,8 @@ function withEtags(gh: Octokit): Octokit {
 /**
  * Server-side Octokit for the dashboard's own GitHub identity.
  * Prefers a GitHub App (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID),
- * falls back to GITHUB_TOKEN. Returns null when neither is set, so callers can
+ * then STAGEDIRECTOR_GITHUB_TOKEN (a token used only by the dashboard, so its hourly
+ * limit is not shared with the gh CLI and other tools), then GITHUB_TOKEN. Returns null when neither is set, so callers can
  * fall back to sample data.
  */
 let cached: Octokit | null | undefined;
@@ -51,7 +42,15 @@ const log = { debug: () => {}, info: () => {}, warn: console.warn, error: () => 
 
 export function githubConfigured(): boolean {
   const e = process.env;
-  return Boolean((e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) || e.GITHUB_TOKEN);
+  return Boolean((e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) || e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN);
+}
+
+/** Which identity the dashboard uses, for /usage. */
+export function githubIdentity(): "app" | "own-token" | "shared-token" | "none" {
+  const e = process.env;
+  if (e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) return "app";
+  if (e.STAGEDIRECTOR_GITHUB_TOKEN) return "own-token";
+  return e.GITHUB_TOKEN ? "shared-token" : "none";
 }
 
 export function getOctokit(): Octokit | null {
@@ -60,7 +59,7 @@ export function getOctokit(): Octokit | null {
   // GITHUB_API_URL: GitHub Enterprise, or the fake GitHub used by the tests (src/lib/github/testing/fake-github.ts).
   const baseUrl = e.GITHUB_API_URL || undefined;
   if (e.GITHUB_APP_ID && e.GITHUB_APP_PRIVATE_KEY && e.GITHUB_APP_INSTALLATION_ID) {
-    cached = withEtags(new Octokit({
+    cached = throughGateway(new Octokit({
       baseUrl,
       log,
       authStrategy: createAppAuth,
@@ -70,8 +69,8 @@ export function getOctokit(): Octokit | null {
         installationId: Number(e.GITHUB_APP_INSTALLATION_ID),
       },
     }));
-  } else if (e.GITHUB_TOKEN) {
-    cached = withEtags(new Octokit({ log, auth: e.GITHUB_TOKEN, baseUrl }));
+  } else if (e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN) {
+    cached = throughGateway(new Octokit({ log, auth: e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN, baseUrl }));
   } else {
     cached = null;
   }

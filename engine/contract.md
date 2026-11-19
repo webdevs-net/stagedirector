@@ -277,3 +277,20 @@ Both write GitHub Deployments in environment `observed-<stage>`. These are **dis
 only**: the live gate reads `environment=<stage>` and never these, so a deploy made
 outside Stage Director can not unlock a push to live. To put such a commit live, push
 it through Stage Director (staging first, then the usual code-owner approval).
+
+## Run progress file (self-hosted runner on the dashboard's machine)
+
+When the runner's environment sets `STAGEDIRECTOR_PROGRESS_DIR` (the compose file sets it to
+`/home/runner/progress`, mounted from `STAGEDIRECTOR_PROGRESS_HOST_DIR`, default `./progress`),
+the workflow's "Note progress on this machine" steps append one JSON line per step to
+`<dir>/<owner>~<repo>.jsonl`:
+
+```json
+{"run":123,"repo":"netdevs-net/mariasplace","stage":"staging","commit":"…","action":"deploy","by":"ryan","state":"running","step":2,"at":"…","url":"…"}
+```
+
+`step` is the dashboard's plain step (0 checking, 2 copying, 3 checking the site); `state` is
+`running`, then `passed` / `failed` / `stopped`. A dashboard on the same machine reads the folder
+(`STAGEDIRECTOR_RUNNER_PROGRESS=<host dir>`) and follows the run without API calls. Display only:
+GitHub stays the record, and is asked once when the run ends. Create the host folder before
+starting the runner so the runner user can write to it (`mkdir -p progress && chmod 777 progress`).

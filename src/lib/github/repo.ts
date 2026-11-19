@@ -2,6 +2,8 @@ import type { Octokit } from "@octokit/rest";
 import type { Change, ProjectConfig, RunningCommit, RunState, StageStatus } from "@/lib/types";
 import { safeParseConfig } from "@/lib/config";
 import type { RoleSource } from "@/lib/auth/roles";
+import { localGit, prFromMessage, type LocalGit } from "./localgit";
+import { GatewayBusy } from "./gateway";
 import { CONFIG_FILE, WORKFLOW_FILE, splitRepo } from "./client";
 import { summarize, summariesEnabled } from "./summary";
 
@@ -15,6 +17,12 @@ import { summarize, summariesEnabled } from "./summary";
 export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot";
 
 export async function readFile(gh: Octokit, repo: string, path: string, ref?: string): Promise<string | null> {
+  // Page views read the default branch from the local copy (no API). Actions (and refs) ask GitHub.
+  if (!ref) {
+    const lg = await localGit(gh, repo);
+    const branch = lg ? await defaultBranchName(gh, repo, lg) : null;
+    if (lg && branch) return lg.readFile(branch, path);
+  }
   try {
     const { data } = await gh.rest.repos.getContent({ ...splitRepo(repo), path, ref });
     if (Array.isArray(data) || data.type !== "file" || !("content" in data)) return null;
@@ -56,6 +64,8 @@ export function roleSource(gh: Octokit): RoleSource {
 
 /** Pinned = the git ref refs/stagedirector/pins/<stage> exists (the workflow creates and deletes it). */
 export async function pinRefExists(gh: Octokit, repo: string, stageId: string): Promise<boolean> {
+  const lg = await localGit(gh, repo);
+  if (lg) return lg.hasRef(`refs/stagedirector/pins/${stageId}`);
   try {
     await gh.rest.git.getRef({ ...splitRepo(repo), ref: `stagedirector/pins/${stageId}` });
     return true;
@@ -63,6 +73,11 @@ export async function pinRefExists(gh: Octokit, repo: string, stageId: string): 
     if ((e as { status?: number }).status === 404) return false;
     throw e;
   }
+}
+
+/** The default branch, from the local copy's HEAD (set at first fetch), else the API. */
+async function defaultBranchName(gh: Octokit, repo: string, lg: LocalGit): Promise<string | null> {
+  return lg.defaultBranch();
 }
 
 export async function defaultBranchHead(gh: Octokit, repo: string, branch: string): Promise<string> {
@@ -130,8 +145,10 @@ export function pickRunning(own: { commit: string; at: string } | null, seen: Ob
   return seen;
 }
 
-async function behind(gh: Octokit, repo: string, base: string | null, head: string | null): Promise<number> {
+async function behind(gh: Octokit, repo: string, base: string | null, head: string | null, lg: LocalGit | null = null): Promise<number> {
   if (!base || !head || base === head) return 0;
+  const local = lg ? await lg.aheadBehind(base, head) : null;
+  if (local) return local.ahead;
   const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${base}...${head}`, per_page: 1 });
   return data.ahead_by;
 }
@@ -143,7 +160,8 @@ export async function stageStatuses(
   config: ProjectConfig,
   pinned: (stageId: string) => Promise<boolean>,
 ): Promise<StageStatus[]> {
-  const head = await defaultBranchHead(gh, repo, config.branch).catch(() => null);
+  const lg = await localGit(gh, repo);
+  const head = (lg ? await lg.head(config.branch) : null) ?? (await defaultBranchHead(gh, repo, config.branch).catch(() => null));
   const [deployed, observed] = await Promise.all([
     Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id)))),
     Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestObserved(gh, repo, s.id).catch(() => null)))),
@@ -154,10 +172,13 @@ export async function stageStatuses(
       const seen = pickRunning(d, observed[i]);
       let running: RunningCommit | null = null;
       if (seen && head) {
-        const cmp = await gh.rest.repos
-          .compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${seen.commit}...${head}`, per_page: 1 })
-          .then((r) => r.data)
-          .catch(() => null);
+        const local = lg ? await lg.aheadBehind(seen.commit, head) : null;
+        const cmp = local
+          ? { ahead_by: local.ahead, behind_by: local.behind }
+          : await gh.rest.repos
+              .compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${seen.commit}...${head}`, per_page: 1 })
+              .then((r) => r.data)
+              .catch(() => null);
         running = { ...seen, behindBy: cmp?.ahead_by ?? 0, onBranch: cmp ? cmp.behind_by === 0 : false };
       }
       // Compare with the previous stage that has a commit, or the branch head.
@@ -168,7 +189,7 @@ export async function stageStatuses(
         commit: d?.commit ?? null,
         deployedAt: d?.at ?? null,
         deployedBy: d?.by ?? null,
-        behindBy: d ? await behind(gh, repo, d.commit, prev).catch(() => 0) : 0,
+        behindBy: d ? await behind(gh, repo, d.commit, prev, lg).catch(() => 0) : 0,
         outOfSync: d?.outOfSync ?? [],
         pinned: s.pushers === "none" ? false : await pinned(s.id),
         running,
@@ -183,6 +204,21 @@ function plainSummary(body: string | null | undefined, title: string): string {
     .map((l) => l.replace(/^#+\s*|^[-*]\s*/, "").trim())
     .find((l) => l && !l.startsWith("<!--"));
   return (line ?? title).slice(0, 240);
+}
+
+// Files of a merged PR do not change: remember them per PR + merge commit.
+const filesMemo = new Map<string, string[]>();
+async function prFiles(gh: Octokit, repo: string, pr: number, sha: string): Promise<{ filename: string }[]> {
+  const key = `${repo}#${pr}@${sha}`;
+  let names = filesMemo.get(key);
+  if (!names) {
+    const files = await gh.paginate(gh.rest.pulls.listFiles, { ...splitRepo(repo), pull_number: pr, per_page: 100 }).catch(() => null);
+    if (!files) return [];
+    names = files.map((f) => f.filename);
+    if (filesMemo.size > 2000) filesMemo.clear();
+    filesMemo.set(key, names);
+  }
+  return names.map((filename) => ({ filename }));
 }
 
 // Which PRs a commit came from hardly ever changes once merged, so remember it (10 min)
@@ -207,7 +243,11 @@ async function prsForCommit(gh: Octokit, repo: string, sha: string): Promise<PrL
 export async function changesBetween(gh: Octokit, repo: string, from: string | null, to: string | null): Promise<Change[]> {
   if (!to || from === to) return [];
   let commits: { sha: string; commit: { message: string }; html_url: string }[];
-  if (from) {
+  const lg = await localGit(gh, repo);
+  const local = lg ? await lg.commits(from, to, from ? 50 : 20) : null;
+  if (local) {
+    commits = local.map((c) => ({ sha: c.sha, commit: { message: c.message }, html_url: `https://github.com/${repo}/commit/${c.sha}` }));
+  } else if (from) {
     const { data } = await gh.rest.repos.compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${from}...${to}`, per_page: 100 });
     commits = data.commits.slice(-50);
   } else {
@@ -218,7 +258,16 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
   const direct: Change[] = [];
   const bodies = new Map<number, { body: string | null; sha: string }>();
   // One request per commit, all at once (they were sequential: ~8 s for 50 commits). Order is kept below.
-  const prLists = await Promise.all(commits.map((c) => prsForCommit(gh, repo, c.sha)));
+  // With a local copy, merge/squash messages name the PR, so no API call per commit.
+  const prLists = await Promise.all(
+    commits.map(async (c) => {
+      const named = prFromMessage(c.commit.message);
+      if (named) {
+        return [{ number: named.pr, title: named.title, body: named.body, merged_at: "merged", html_url: `https://github.com/${repo}/pull/${named.pr}`, merge_commit_sha: c.sha, head: { sha: c.sha } }] as unknown as PrList;
+      }
+      return local ? ([] as unknown as PrList) : prsForCommit(gh, repo, c.sha);
+    }),
+  );
   for (const [i, c] of commits.entries()) {
     const prs = prLists[i];
     const merged = prs.filter((pr) => pr.merged_at);
@@ -238,7 +287,7 @@ export async function changesBetween(gh: Octokit, repo: string, from: string | n
     await Promise.all(
       [...seen.values()].map(async (ch) => {
         const b = bodies.get(ch.pr)!;
-        const files = await gh.paginate(gh.rest.pulls.listFiles, { ...splitRepo(repo), pull_number: ch.pr, per_page: 100 }).catch(() => []);
+        const files = await prFiles(gh, repo, ch.pr, b.sha);
         ch.summary = await summarize({ repo, number: ch.pr, title: ch.title, body: b.body, sha: b.sha, files: files.map((f) => f.filename) });
       }),
     );
@@ -327,7 +376,8 @@ export async function runLog(gh: Octokit, repo: string, runId: number): Promise<
     try {
       const res = await gh.rest.actions.downloadJobLogsForWorkflowRun({ ...splitRepo(repo), job_id: job.id });
       parts.push(`=== ${job.name} ===\n${String(res.data)}`);
-    } catch {
+    } catch (e) {
+      if (e instanceof GatewayBusy) throw e; // held back: keep the last log instead of a blank one
       parts.push(`=== ${job.name} ===\n(log not available yet)`);
     }
   }

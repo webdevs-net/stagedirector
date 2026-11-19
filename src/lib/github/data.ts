@@ -9,6 +9,7 @@ import { changesBetween, defaultBranchHead, readConfig, recentRuns, resolveRunSt
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 import { invalidate, swr } from "./swr";
+import { asCaller } from "./gateway";
 
 /** Page reads newer than this are served as is; older ones are served and refreshed behind. */
 const FRESH_MS = 20_000;
@@ -171,7 +172,8 @@ const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
  */
 export async function performAction(actor: string, input: ActionInput): Promise<ActionResult> {
   try {
-    return await performActionFresh(actor, input);
+    // Button presses are never held back by the per-minute cap (gateway.ts).
+    return await asCaller("action", () => performActionFresh(actor, input));
   } finally {
     invalidate(input.repo); // the next page read shows the result of the press
   }
@@ -303,6 +305,10 @@ export async function openRequests(repo: string): Promise<PushRequest[]> {
  * starting "claude:" can never answer.
  */
 export async function answerRequest(actor: string, repo: string, requestId: string, ok: boolean): Promise<ActionResult> {
+  return asCaller("action", () => answerRequestFresh(actor, repo, requestId, ok));
+}
+
+async function answerRequestFresh(actor: string, repo: string, requestId: string, ok: boolean): Promise<ActionResult> {
   const project = await getProjectFresh(repo);
   if (!project) return { ok: false, status: 404, error: "unknown project" };
   const req = (await openRequests(repo)).find((r) => r.id === requestId);

@@ -3,7 +3,8 @@
 // them it serves the built-in demo data from ./mock so the app still runs.
 import "server-only";
 import { revalidateAll, swr } from "./github/swr";
-import { rateLimit, rateLimited } from "./github/client";
+import { asCaller } from "./github/gateway";
+import { gateway, githubIdentity, rateLimit, rateLimited } from "./github/client";
 import { headers } from "next/headers";
 
 /**
@@ -116,7 +117,12 @@ export function pollSeconds(): number {
 
 /** Timed poll / Refresh button: fetch fresh GitHub data into the cache before the page re-renders. */
 export async function refreshFromGithub(): Promise<void> {
-  if (live()) await revalidateAll();
+  if (live()) await asCaller("poll", () => revalidateAll());
+}
+
+/** For /usage: our GitHub calls in the last hour and the remaining hourly budget. */
+export function apiUsage() {
+  return { identity: githubIdentity(), ...gateway.summary() };
 }
 
 export function isDemo(): boolean {
@@ -129,6 +135,11 @@ export function isDemo(): boolean {
  */
 export async function getRunLog(repoSlug?: string, stageId?: string): Promise<{ lines: string[]; url: string | null; sample: boolean }> {
   if (!live() || !repoSlug || !stageId) return { lines: await mock.getRunLog(), url: null, sample: true };
+  // Kept 15 s and shared by every open log window; a held-back call keeps the last log.
+  return swr(`log:${repoSlug}:${stageId}`, 15_000, () => asCaller("runs", () => readRunLog(repoSlug, stageId)));
+}
+
+async function readRunLog(repoSlug: string, stageId: string): Promise<{ lines: string[]; url: string | null; sample: boolean }> {
   const run = await runs.latestRunFor(slugToRepo(repoSlug), stageId);
   if (!run) return { lines: ["No run on this stage yet."], url: null, sample: false };
   const lines = await runs.runLogLines(slugToRepo(repoSlug), run.id);
@@ -139,7 +150,7 @@ export async function getRunLog(repoSlug?: string, stageId?: string): Promise<{ 
 // real workflow run (polled through src/lib/github/runs.ts). Without
 // credentials they use the 20-second demo run from ./mock.
 export async function getActiveRuns(): Promise<mock.ActiveRun[]> {
-  return live() ? runs.activeRuns() : mock.getActiveRuns();
+  return live() ? asCaller("runs", () => runs.activeRuns()) : mock.getActiveRuns();
 }
 
 /** Stops a run. Returns an error message, or null when it was stopped. */
