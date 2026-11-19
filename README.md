@@ -106,7 +106,8 @@ Every screen works at phone width, with big rounded buttons.
 ```
 
 - **The dashboard never talks to hosting.** Its buttons start GitHub workflow runs; status, logs and history come from the GitHub API.
-- **The engine** ([`engine/`](engine/)) is one workflow each project copies, plus the project's own deploy script. Before anything moves, the workflow checks who is asking, whether this exact commit is approved by a code owner, whether the previous stage is on that commit, and whether the stage is pinned. The host's SSH key lives only in a GitHub Environment that releases it to the main branch, and for live only after a code-owner review.
+- **The engine** ([`engine/`](engine/)) is one workflow each project copies, plus the project's own deploy script. Before anything moves, the workflow checks who is asking, whether this exact commit is approved by a code owner, whether the previous stage is on that commit, and whether the stage is pinned. The host's SSH key lives only in a GitHub Environment that releases it only to runs from the main branch, with a separate key per stage.
+- **The live lock** is two things together: a recorded approval of that exact commit by a person listed in `CODEOWNERS` (checked inside the workflow; bots and AI sessions can't pass), and live secrets that only `main` can use. On the current GitHub Pro plan with private repos, GitHub Environments can't require a reviewer. GitHub Enterprise, or a public repo, would add Environment required reviewers as a third lock. Details: [deploy contract](engine/contract.md#live-gate-what-the-workflow-checks).
 - **Each project** has a `stagedirector.yml` describing its stages ([example](examples/mariasplace.stagedirector.yml)) and a deploy command that follows the [deploy contract](engine/contract.md).
 
 | Where | What |
