@@ -10,9 +10,12 @@ import { runningDetail, runningHeadline } from "@/components/runningText";
 import { PinButton } from "@/components/PinButton";
 import { RequestsCard } from "@/components/RequestsCard";
 import { mayAnswer } from "@/lib/auth/permissions";
+import { PreviewToggle } from "@/components/PreviewToggle";
+import { RunnerBanner } from "@/components/RunnerBanner";
+import { runnerStatus } from "@/lib/data";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
-  const { project: p, viewer, base, q } = await loadProject(params, searchParams);
+  const { project: p, viewer, realRole, base, q, sp } = await loadProject(params, searchParams);
   const stages = p.config.stages;
   const first = stages[0];
   const last = stages[stages.length - 1];
@@ -22,7 +25,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const approved = !!p.extras.approval;
   const n = p.waiting.length;
   const liveSync = st(last.id)?.outOfSync ?? [];
-  const local = await readLocalWork(p.repo, p.config.branch);
+  const [local, runnerHealth] = await Promise.all([readLocalWork(p.repo, p.config.branch), runnerStatus([p])]);
   const midRunning = middle ? st(middle.id)?.running ?? null : null;
   const liveRunning = st(last.id)?.running ?? null;
   const middlePinned = !!middle && !!st(middle.id)?.pinned;
@@ -51,6 +54,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
       <RequestsCard repo={p.repo} requests={p.extras.requests} stages={stages} answerable={answerable} />
 
       <div className="flex flex-col gap-3">
+        <RunnerBanner health={runnerHealth} stages={stages} />
         {p.busy && <Banner kind="busy" title={`${p.busy.by} is updating ${p.busy.stageId}`} detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${base}/updating${q}` }} />}
         {p.extras.safetyNetUndid && <Banner kind="undid" title="Safety net undid an update" detail={p.extras.safetyNetUndid} action={{ label: "Why?", href: `${base}/history${q}` }} />}
         {liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
@@ -176,11 +180,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               ? `Unlocks once a code owner approves ${n === 1 ? "this change" : `these ${n} changes`}.`
               : "Only code owners can approve and put changes live. Ask one to review."}
         </p>
-        <p className="text-center text-sm text-muted">
-          Preview as:{" "}
-          <a className="font-bold text-blue underline" href={base}>code owner</a> ·{" "}
-          <a className="font-bold text-blue underline" href={`${base}?as=developer`}>developer</a>
-        </p>
+        {realRole === "code-owner" && <PreviewToggle base={base} sp={sp} current={isOwner ? "code-owner" : "developer"} />}
       </section>
       </RunOverlay>
 

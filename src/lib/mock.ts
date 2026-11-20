@@ -307,6 +307,8 @@ export interface ActiveRun {
   runId?: number;
   /** Link to the run on GitHub (GitHub mode only). */
   url?: string;
+  /** Set when the run has sat queued for minutes: the runner label it waits for (e.g. "ovh1"). */
+  waitingForRunner?: string;
 }
 
 const RUN_MS = 20_000;

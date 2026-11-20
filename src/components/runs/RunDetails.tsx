@@ -22,6 +22,7 @@ export function RunDetails({ repo, stageId, stageName, demo, checkable }: { repo
         <Icon name={running ? "refresh" : r?.state === "failed" ? "alert" : "check"} size={40} className={running ? "run-spin" : ""} />
       </div>
       <h1 className="text-3xl font-extrabold">{r ? runTitle(r) : `Updating ${stageName.toLowerCase()}…`}</h1>
+      {r?.waitingForRunner && <p role="status" className="rounded-2xl bg-amber-soft px-4 py-3 text-[17px] font-bold">Waiting for a runner — none is online for {r.waitingForRunner}. It starts by itself once the runner is back, or press Stop.</p>}
       {!r && <p className="text-sm font-bold text-muted">{demo ? "(Sample run — press Update on the project page to start a real one.)" : "(Nothing is running on this stage right now.)"}</p>}
       <p className="text-[17px] text-muted">{demo ? "About 20 seconds." : "Usually a minute or two."} You can leave this page; the little window at the bottom keeps you posted.</p>
       <div role="progressbar" aria-label="Progress" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className="h-3.5 w-full overflow-hidden rounded-full bg-[#e3e9f0]">

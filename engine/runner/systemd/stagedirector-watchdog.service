@@ -1,0 +1,9 @@
+[Unit]
+Description=Stage Director runner watchdog (one check)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/stagedirector/watchdog.env
+ExecStart=/opt/stagedirector/watchdog.sh

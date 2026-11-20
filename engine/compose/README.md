@@ -58,6 +58,14 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 - Host keys never live on the box; the workflow loads them from the GitHub Environment
   (default branch only, live after a code-owner review).
 
+## Health and restarts
+
+`restart: unless-stopped` brings the runner back after a crash or reboot. The compose file also
+has a **healthcheck**: the container is `healthy` while the runner's `Runner.Listener` process is
+alive (`docker compose ps` shows it). Docker does not restart an unhealthy container by itself;
+`engine/runner/watchdog.sh` does that, and also restarts it when GitHub lists the runner as
+offline. Setup steps (by hand, on the host): `engine/runner/README.md` → "Watchdog".
+
 ## Common commands
 
 | | |
@@ -70,6 +78,7 @@ Copy `../workflow/stagedirector.yml` into the project as `.github/workflows/stag
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Runs stay *Queued* for hours; the dashboard says "Waiting for a runner" | No online runner carries the stage's `runner:` label | `docker compose ps` / `logs runner`, then `up -d`; set up the watchdog so it heals itself |
 | `config.sh` fails with `404 (Not Found)` at `GetTenantCredential`, even with a fresh token | GitHub refuses runners that are too old | Set `RUNNER_VERSION` to a current release ([releases](https://github.com/actions/runner/releases)), then `docker compose up -d --build` |
 | Build hangs at the first `apt-get update` (ovh1) | `archive.ubuntu.com` / `security.ubuntu.com` time out from OVH | `APT_MIRROR=http://ubuntu.mirrors.ovh.net/ubuntu/` in `.env`, rebuild |
 | `all predefined address pools have been fully subnetted` | The host's Docker has no free network ranges (many projects) | Don't delete other projects' networks. Add `docker-compose.override.yml` with `services: {runner: {network_mode: bridge}}` so the runner uses Docker's default bridge |
