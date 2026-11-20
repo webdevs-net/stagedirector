@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 
-// Shown when a page cannot be drawn at all: usually GitHub's hourly limit is used up
-// and there is no saved copy yet (first start). Pages with a saved copy never get here.
+// Shown when a page cannot be drawn at all and there is no saved copy yet (first start). Two different causes:
+// Stage Director's own pacing (it held its calls back; GitHub's limit is fine) or GitHub's hourly limit.
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const limit = /rate limit|held this GitHub call back|hourly limit/i.test(error.message);
+  const paced = /held this GitHub call back/i.test(error.message); // our own per-minute pacing, not GitHub's limit
+  const limit = paced || /rate limit|hourly limit/i.test(error.message);
   return (
     <div className="mx-auto flex max-w-[640px] flex-col gap-4 rounded-[24px] bg-white p-6">
       <h1 className="text-2xl font-extrabold">{limit ? "Waiting for GitHub" : "Something went wrong"}</h1>
       <p className="text-soft">
-        {limit
+        {paced
+          ? "Stage Director paced its own GitHub calls (it allows a few a minute in the background), so this page is not drawn yet. GitHub's limit is fine. Try again in a minute."
+          : limit
           ? "GitHub's hourly limit is used up and there is no saved copy of this page yet. It fills in by itself once the limit resets. The GitHub API usage page shows when."
           : "This page could not be loaded. Try again in a moment."}
       </p>

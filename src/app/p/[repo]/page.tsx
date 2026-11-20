@@ -102,9 +102,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
 
       <section aria-labelledby="changes-title" className="flex flex-col gap-3">
         <h2 id="changes-title" className="text-xl font-extrabold">
-          On {middle?.name.toLowerCase() ?? first.name.toLowerCase()}, not on {last.name.toLowerCase()} yet <span className="text-base font-bold text-muted">· {liveUnknown ? "not checked" : `${n} ${n === 1 ? "change" : "changes"}`}</span>
+          On {middle?.name.toLowerCase() ?? first.name.toLowerCase()}, not on {last.name.toLowerCase()} yet <span className="text-base font-bold text-muted">· {n} {n === 1 ? "change" : "changes"}{liveUnknown ? ` · ${last.name.toLowerCase()} not checked` : ""}</span>
         </h2>
-        {liveUnknown && <p className="rounded-[22px] bg-white p-6 text-muted">Not known: Stage Director has never deployed or checked {last.name.toLowerCase()}, so it cannot say what is on it. Run the Sync check in the Toolbox, or put {last.name.toLowerCase()} live from here once.</p>}
+        {liveUnknown && <p className="rounded-[22px] bg-amber-soft p-6 text-soft">Stage Director has never deployed or checked {last.name.toLowerCase()}, so it cannot tell exactly what is new there. Below are {middle?.name.toLowerCase() ?? "main"}&apos;s latest changes; putting {last.name.toLowerCase()} live sends everything on {middle?.name.toLowerCase() ?? "main"}.</p>}
         {!liveUnknown && n === 0 && <p className="rounded-[22px] bg-white p-6 text-muted">Nothing waiting. {last.name} matches {middle?.name.toLowerCase() ?? "main"}.</p>}
         {p.waiting.map((c, i) => (
           <details key={c.pr || c.commit} open={i === 0} className="rounded-[22px] bg-white shadow-[0_4px_18px_rgba(30,43,58,.06)]">
