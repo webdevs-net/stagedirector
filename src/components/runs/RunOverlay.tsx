@@ -4,12 +4,10 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { repoToSlug } from "@/lib/shared";
 import { runTitle } from "./RunWindow";
+import { waitingText } from "./waiting";
 import { useRuns } from "./RunsProvider";
 
 /** Plain words for a run stuck waiting on a runner. */
-export function waitingText(label: string) {
-  return `Waiting for a runner — none is online for ${label}`;
-}
 
 /**
  * Covers its children with a soft animated layer while a run on one of `stageIds` is going.
@@ -32,7 +30,7 @@ export function RunOverlay({ repo, stageIds, children }: { repo: string; stageId
             {r.waitingForRunner ? "Not started yet" : "Busy · one run at a time"}
           </span>
           <p className="relative text-xl font-extrabold" aria-live="polite">
-            {r.waitingForRunner ? waitingText(r.waitingForRunner) : <>{runTitle(r)} <span className="text-blue">{r.steps[r.step]}</span></>}
+            {r.waitingForRunner ? waitingText(r.waitingForRunner, r.startedAt) : <>{runTitle(r)} <span className="text-blue">{r.steps[r.step]}</span></>}
           </p>
           {err && <p role="alert" className="relative font-bold text-red">{err}</p>}
           <div className="relative flex flex-wrap justify-center gap-2">

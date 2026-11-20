@@ -7,6 +7,8 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 ## Unreleased
 
 - The repo moved to `webdevs-net/stagedirector`; links updated.
+- Workflow: an automatic (push) deploy that waited for a runner now checks, once it starts, that its commit is still the head of the branch. If newer commits landed meanwhile it stops without failing, so an old commit can no longer overwrite staging. Deploys started from the dashboard are unchanged.
+- Dashboard: a run stuck in the queue says how long it has waited ("Waiting for a runner 12 min"), and the project page says when no runner at all has a stage's label.
 
 ## 0.5.0 (2026-11-19)
 
