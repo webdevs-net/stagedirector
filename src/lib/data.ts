@@ -19,6 +19,7 @@ async function waitForFresh(): Promise<number> {
 import * as mock from "./mock";
 import * as gh from "./github";
 import * as runs from "./github/runs";
+import * as runnersMod from "./github/runners";
 import type { ActivityEvent, CheckResult, ProjectSummary } from "./types";
 import { checksFor, runChecks, summarizeResults } from "./checks";
 import { applyFilter, type ActivityFilter, type ActivityRow } from "./activity";
@@ -268,4 +269,25 @@ export async function approve(repo: string, commit: string): Promise<string | nu
 /** True when the dashboard reads real GitHub data (credentials set). */
 export async function dataIsLive(): Promise<boolean> {
   return live();
+}
+
+export type { RunnerHealth, RunnerState } from "./github/runners";
+
+/**
+ * Health of each runner label the given projects use, keyed by label. Never throws:
+ * when GitHub won't say (no Administration: read), labels come back "unknown".
+ * Demo mode: every runner online.
+ */
+export async function runnerStatus(projects: { repo: string; config: { stages: { runner?: string }[] } }[]): Promise<Record<string, import("./github/runners").RunnerHealth>> {
+  const out: Record<string, import("./github/runners").RunnerHealth> = {};
+  const per = await Promise.all(
+    projects.map(async (p) => {
+      const labels = p.config.stages.map((s) => s.runner).filter((l): l is string => !!l);
+      if (!labels.length) return {};
+      if (!live()) return Object.fromEntries(labels.map((l) => [l, { label: l, state: "online" as const, names: [`${l}-runner`] }]));
+      return runnersMod.runnerHealth(p.repo, labels).catch(() => ({}));
+    }),
+  );
+  for (const m of per) for (const [label, h] of Object.entries(m)) if (!out[label] || out[label].state === "unknown") out[label] = h;
+  return out;
 }

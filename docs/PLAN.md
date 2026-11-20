@@ -16,3 +16,4 @@
   Set when a stage runs a commit Stage Director did not deploy (from `observed-<stage>`
   deployments, see engine/contract.md "Outside deploys"). Display only; permission checks
   and the live gate keep using `commit`.
+- 2026-11-19 (runner resilience) — no change to types.ts. `ActiveRun.waitingForRunner?: string` added in src/lib/mock.ts (runner label a stuck-queued run waits for); runner health types (`RunnerHealth`, `RunnerState`) live in src/lib/github/runners.ts.

@@ -23,6 +23,15 @@ services:
         APT_MIRROR: ${APT_MIRROR:-}
     image: stagedirector-runner:${RUNNER_VERSION:-2.338.2}
     restart: unless-stopped
+    # Healthy while the runner's listener process is alive. Docker only marks it unhealthy;
+    # engine/runner/watchdog.sh restarts it (and also checks GitHub says the runner is online).
+    # The [.] keeps grep from matching its own command line.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -lsa 'Runner[.]Listener' /proc/[0-9]*/cmdline >/dev/null"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     environment:
       GITHUB_URL: ${GITHUB_URL:?set GITHUB_URL in .env}
       RUNNER_NAME: ${RUNNER_NAME:?set RUNNER_NAME in .env}

@@ -10,6 +10,7 @@ import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 import { invalidate, swr } from "./swr";
 import { asCaller } from "./gateway";
+import { runnerStateNow } from "./runners";
 
 /** Page reads newer than this are served as is; older ones are served and refreshed behind. */
 const FRESH_MS = 20_000;
@@ -271,6 +272,12 @@ async function performActionFresh(actor: string, input: ActionInput): Promise<Ac
     commit = (await gh.rest.repos.getBranch({ ...splitRepo(input.repo), branch: config.branch })).data.commit.sha;
   }
   if (!commit) return { ok: false, status: 400, error: "nothing on that stage yet" };
+  // Don't queue a run that can never start: refuse when the stage's runner is known offline.
+  // "unknown" (GitHub won't tell us) is allowed.
+  const runnerLabel = config.stages[idx].runner;
+  if (runnerLabel && (await runnerStateNow(gh, input.repo, runnerLabel)) === "offline") {
+    return { ok: false, status: 409, error: `The runner on ${runnerLabel} is offline, so nothing can run on ${config.stages[idx].name} right now. Nothing was started. Try again once it is back.` };
+  }
   await startRun(codeOwnerStage && asPerson ? asPerson : gh, input.repo, config.branch, {
     stage: input.stageId,
     commit,

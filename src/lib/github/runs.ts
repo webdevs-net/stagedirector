@@ -6,6 +6,7 @@ import { configuredRepos, getOctokit, splitRepo } from "./client";
 import { mapProgress, type GhJob } from "./progress";
 import { localRuns } from "./runprogress";
 import { GatewayBusy } from "./gateway";
+import { waitingForRunner } from "./runners";
 import { readConfig, recentRuns, resolveRunStage, runLog, type RunInfo } from "./repo";
 
 // Live run progress from GitHub Actions. The browser polls every second while
@@ -86,6 +87,7 @@ export function toActiveRun(r: RunInfo, config: ProjectConfig, repo: string, job
     finishedAt: running ? null : finishedAt ?? Date.now(),
     runId: r.id,
     url: r.url,
+    ...(running && waitingForRunner(r.state, Date.parse(r.startedAt), jobs) ? { waitingForRunner: stage.runner ?? "a self-hosted runner" } : {}),
   };
 }
 

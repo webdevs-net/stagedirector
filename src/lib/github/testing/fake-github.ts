@@ -24,6 +24,15 @@ export interface FakeRepoInit {
   prs?: FakePr[];
   permissions?: Record<string, string>; // login -> admin | write | read
   deployed?: Record<string, string>; // stage id -> sha already on it
+  /** Self-hosted runners. Left out: the runners endpoint answers 403 (the app lacks Administration: read). */
+  runners?: FakeRunner[];
+}
+
+export interface FakeRunner {
+  name: string;
+  status: "online" | "offline";
+  busy: boolean;
+  labels: string[];
 }
 
 interface Deployment {
@@ -63,6 +72,7 @@ interface Repo {
   deployments: Deployment[];
   refs: Record<string, string>;
   runs: FakeRun[];
+  runners?: FakeRunner[];
   statuses: { sha: string; context: string; state: string; creator: string; description: string }[];
 }
 
@@ -87,6 +97,7 @@ export class FakeGitHub {
       deployments: [],
       refs: {},
       runs: [],
+      runners: init.runners,
       statuses: [],
     };
     this.repos.set(init.name, r);
@@ -313,6 +324,10 @@ export class FakeGitHub {
     }
 
     // Actions
+    if (m === "GET" && rest === "/actions/runners") {
+      if (!r.runners) return this.send(res, 403, { message: "Resource not accessible by integration" });
+      return this.send(res, 200, { total_count: r.runners.length, runners: r.runners.map((x, i) => ({ id: i + 1, name: x.name, os: "Linux", status: x.status, busy: x.busy, labels: x.labels.map((name, j) => ({ id: j + 1, name, type: "custom" })) })) });
+    }
     if (m === "GET" && /^\/actions\/workflows\/[^/]+\/runs$/.test(rest)) {
       const per = Number(q("per_page") ?? 30);
       return this.send(res, 200, { total_count: r.runs.length, workflow_runs: r.runs.slice(0, per).map(({ jobs: _j, log: _l, inputs: _i, ...run }) => run) });

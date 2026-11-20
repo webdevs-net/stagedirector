@@ -1,9 +1,11 @@
 import { ProjectBrowser } from "@/components/ProjectBrowser";
 import { Button, ButtonLink, Icon, Page } from "@/components/ui";
-import { getViewer, isDemo, listProjects } from "@/lib/data";
+import { getViewer, isDemo, listProjects, runnerStatus } from "@/lib/data";
+import { RunnerLine } from "@/components/RunnerBanner";
 
 export default async function HomePage() {
   const [viewer, projects] = await Promise.all([getViewer(), listProjects()]);
+  const health = await runnerStatus(projects).catch(() => ({}) as Awaited<ReturnType<typeof runnerStatus>>);
   return (
     <Page width="max-w-[1080px]">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -32,8 +34,8 @@ export default async function HomePage() {
               <div>Hostinger · reached through ovh1 over SSH (demo)</div>
             </>
           ) : (
-            [...new Set(projects.flatMap((p) => p.config.stages.map((s) => s.runner).filter(Boolean)))].map((r) => (
-              <div key={r}>Runner “{r}” · used by {projects.filter((p) => p.config.stages.some((s) => s.runner === r)).map((p) => p.config.name).join(", ")}</div>
+            [...new Set(projects.flatMap((p) => p.config.stages.map((s) => s.runner).filter((x): x is string => !!x)))].map((r) => (
+              <RunnerLine key={r} h={health[r] ?? { label: r, state: "unknown", names: [] }} usedBy={projects.filter((p) => p.config.stages.some((s) => s.runner === r)).map((p) => p.config.name).join(", ")} />
             ))
           )}
         </div>

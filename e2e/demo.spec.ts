@@ -110,3 +110,15 @@ test("API: health and activity JSON", async ({ request }) => {
   const a = await (await request.get("/api/activity?actor=claude")).json();
   expect(a.events.every((e: { actor: string }) => e.actor.startsWith("claude:"))).toBe(true);
 });
+
+test("preview toggle: the selected view is not a link; switching changes the buttons", async ({ page }) => {
+  await page.goto(MP);
+  const group = page.getByRole("group", { name: "Preview this page as" });
+  await expect(group.getByText("Code owner")).toHaveAttribute("aria-current", "true");
+  await expect(group.getByRole("link", { name: "Code owner" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pin live site" })).toBeVisible();
+  await group.getByRole("link", { name: "Developer" }).click();
+  await expect(page).toHaveURL(/as=developer/);
+  await expect(page.getByRole("button", { name: "Pin live site" })).toHaveCount(0);
+  await expect(group.getByText("Developer")).toHaveAttribute("aria-current", "true");
+});
