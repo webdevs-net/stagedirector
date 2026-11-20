@@ -11,7 +11,8 @@ export default async function HomePage() {
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal text-white">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="m6 10 6 6 6-6" /><path d="M4 21h16" /></svg>
+            {/* eslint-disable-next-line @next/next/no-img-element -- static SVG brand mark */}
+            <img src="/brand/stage-director-logo-white.svg" alt="Stage Director" width={30} height={30} />
           </div>
           <div>
             <p className="text-base text-muted">Good afternoon, {viewer.name}</p>

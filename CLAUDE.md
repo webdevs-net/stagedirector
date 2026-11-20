@@ -42,4 +42,4 @@ Cool palette from the mockups: background #f2f6fa, text #1e2b3a, muted #5a6b7d, 
 - Logo: `docs/brand/stage-director-logo.svg` (director's chair, star cut into the back). Icon/favicon: `docs/brand/stage-director-icon.svg` (star in a rounded tile).
 - Both are one-colour black masters; use them exactly as they are (no redrawing, cropping or rearranging). Colour comes from the palette under **Look** (teal #0f8f8a or text #1e2b3a; white when reversed).
 - Brief and rejected concepts: `docs/brand/BRIEF.md`, `docs/brand/concepts/`.
-- Not yet done: wiring the favicon into the app, replacing 🎬 in the README, colour/lockup files.
+- In use: `src/app/icon.svg` (teal favicon), `public/brand/stage-director-logo-{white,teal}.svg` (home header, README). Not yet: lockups.
