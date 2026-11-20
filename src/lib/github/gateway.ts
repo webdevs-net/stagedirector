@@ -36,6 +36,9 @@ export interface GatewayOptions {
   perMinute: number;   // steady background budget
   burst: number;       // bucket size, so a cold start can fill the cache
   now?: () => number;
+  /** How long a page someone opened may wait for a free slot before giving up (default 20 s). */
+  pageWaitMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class Gateway {
@@ -64,6 +67,16 @@ export class Gateway {
     const rate = this.limit.remaining !== null && this.limit.remaining < 500 ? this.opts.perMinute / 5 : this.opts.perMinute;
     this.tokens = Math.min(this.opts.burst, this.tokens + ((t - this.refilledAt) / 60_000) * rate);
     this.refilledAt = t;
+  }
+
+  private async waitForToken() {
+    const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const deadline = this.now() + (this.opts.pageWaitMs ?? 20_000);
+    while (this.tokens < 1 && this.now() < deadline) {
+      const rate = Math.max(this.opts.perMinute, 0.1);
+      await sleep(Math.min(deadline - this.now(), Math.ceil(((1 - this.tokens) * 60_000) / rate) + 10));
+      this.refill();
+    }
   }
 
   private record(r: Omit<CallRecord, "at">) {
@@ -97,6 +110,9 @@ export class Gateway {
         throw new GatewayBusy("GitHub's hourly limit is nearly used up");
       }
       this.refill();
+      // A page a person opened waits its turn (the cap still holds) instead of failing at once:
+      // after a restart there is no saved copy, so failing shows "Waiting for GitHub" for nothing.
+      if (this.tokens < 1 && caller === "page") await this.waitForToken();
       if (this.tokens < 1) {
         this.record({ route, caller, outcome: "held" });
         throw new GatewayBusy(`more than ${this.opts.perMinute} background calls a minute`);
