@@ -42,8 +42,8 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
         <Eyebrow><span id="safe-title">KEEPING THE SITE SAFE</span></Eyebrow>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <SafeCard title="Safety net" body="If an update breaks something, it's undone by itself"><Toggle label="Safety net" on /></SafeCard>
-          <SafeCard id="sync" title="Sync check" body={live?.outOfSync.length ? `${live.outOfSync.length} file on live was changed outside git` : "Live matches git"}>
-            {live?.outOfSync.length ? <ButtonLink href={`${base}/history${q}`} tone="amber">Look</ButtonLink> : <span className="font-bold text-[#0f6f6b]">All good</span>}
+          <SafeCard id="sync" title="Sync check" body={live?.outOfSync.length ? `${live.outOfSync.length} file on live was changed outside git` : p.lastKnown === null ? "Not checked yet: no deploy or check of live on record" : "Live matches git"}>
+            {live?.outOfSync.length ? <ButtonLink href={`${base}/history${q}`} tone="amber">Look</ButtonLink> : p.lastKnown === null ? <span className="font-bold text-muted">Not checked</span> : <span className="font-bold text-[#0f6f6b]">All good</span>}
           </SafeCard>
           <SafeCard title="Site watch" body="Live site is up · checked 1 min ago"><span className="flex items-center gap-1.5 font-bold text-[#0f6f6b]"><Icon name="check" /> Up</span></SafeCard>
           <SafeCard title="No-downtime switch" body={p.config.noDowntime ? "Updates swap in one step; Undo takes seconds" : "Off · set noDowntime: true in stagedirector.yml"}>

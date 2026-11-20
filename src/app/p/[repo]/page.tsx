@@ -25,6 +25,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const isOwner = viewer.role === "code-owner";
   const approved = !!p.extras.approval;
   const n = p.waiting.length;
+  const liveUnknown = p.lastKnown === null; // never deployed or checked by Stage Director: no comparison with live
   const liveSync = st(last.id)?.outOfSync ?? [];
   const [local, runnerHealth] = await Promise.all([readLocalWork(p.repo, p.config.branch), runnerStatus([p])]);
   const midRunning = middle ? st(middle.id)?.running ?? null : null;
@@ -101,9 +102,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
 
       <section aria-labelledby="changes-title" className="flex flex-col gap-3">
         <h2 id="changes-title" className="text-xl font-extrabold">
-          On {middle?.name.toLowerCase() ?? first.name.toLowerCase()}, not on {last.name.toLowerCase()} yet <span className="text-base font-bold text-muted">· {n} {n === 1 ? "change" : "changes"}</span>
+          On {middle?.name.toLowerCase() ?? first.name.toLowerCase()}, not on {last.name.toLowerCase()} yet <span className="text-base font-bold text-muted">· {liveUnknown ? "not checked" : `${n} ${n === 1 ? "change" : "changes"}`}</span>
         </h2>
-        {n === 0 && <p className="rounded-[22px] bg-white p-6 text-muted">Nothing waiting. {last.name} matches {middle?.name.toLowerCase() ?? "main"}.</p>}
+        {liveUnknown && <p className="rounded-[22px] bg-white p-6 text-muted">Not known: Stage Director has never deployed or checked {last.name.toLowerCase()}, so it cannot say what is on it. Run the Sync check in the Toolbox, or put {last.name.toLowerCase()} live from here once.</p>}
+        {!liveUnknown && n === 0 && <p className="rounded-[22px] bg-white p-6 text-muted">Nothing waiting. {last.name} matches {middle?.name.toLowerCase() ?? "main"}.</p>}
         {p.waiting.map((c, i) => (
           <details key={c.pr || c.commit} open={i === 0} className="rounded-[22px] bg-white shadow-[0_4px_18px_rgba(30,43,58,.06)]">
             <summary className="flex min-h-[72px] items-center gap-3.5 px-5">

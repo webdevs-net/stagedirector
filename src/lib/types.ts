@@ -134,6 +134,9 @@ export interface ProjectSummary {
   config: ProjectConfig;
   stages: StageStatus[];
   waiting: Change[];          // on the last-but-one stage, not yet on the last
+  /** What the last stage (live) is known to run: Stage Director's own deploy, or what a status/version check saw
+   *  on the server. null = never deployed or checked by Stage Director, so `waiting` is not a real comparison. */
+  lastKnown?: { commit: string; source: "deploy" | "observed" } | null;
   needsMe: boolean;
   busy: { by: string; stageId: string } | null;
 }
