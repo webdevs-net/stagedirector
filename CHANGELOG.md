@@ -6,6 +6,8 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 
 ## Unreleased
 
+- The repo moved to `webdevs-net/stagedirector`; links updated.
+
 ## 0.5.0 (2026-11-19)
 
 First versioned release. Everything below shipped before versioning started.
