@@ -47,10 +47,12 @@ async function summarize(gh: Octokit, repo: string, config: ProjectConfig, login
   const last = stages[n - 1];
   const prev = n > 1 ? stages[n - 2] : null;
   // Live's base: what was seen running on the server when that is newer than Stage Director's own deploy, else the
-  // deploy record. With neither, nothing is known about live: no list, and the page says "not checked" (never "matches").
+  // deploy record. With neither, nothing is known about live (lastKnown null): the page says "not checked", never "matches".
   const lastKnown = last.running ? { commit: last.running.commit, source: "observed" as const }
     : last.commit ? { commit: last.commit, source: "deploy" as const } : null;
-  const waiting = prev && lastKnown ? await changesBetween(gh, repo, lastKnown.commit, prev.commit).catch(() => []) : [];
+  // Live unknown: list staging's latest changes (up to 20) so a code owner can still review, approve and put staging
+  // live; the page says live was never checked, so this is not presented as an exact difference.
+  const waiting = prev ? await changesBetween(gh, repo, lastKnown?.commit ?? null, prev.commit).catch(() => []) : [];
   const active = runs.find((r) => r.state === "running" || r.state === "queued");
   let needsMe = false;
   if (login && waiting.length && config.stages[n - 1].pushers === "code-owners") {

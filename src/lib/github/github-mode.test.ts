@@ -174,14 +174,15 @@ describe("GitHub mode (fake GitHub)", () => {
 });
 
 describe("waiting changes", () => {
-  it("says live is unknown (no list, never 'matches') when live was never pushed or checked", async () => {
+  it("says live is unknown but still lists staging's changes when live was never pushed or checked", async () => {
     const { data } = await load();
     fake.repos.clear();
     const r = seedTestRepo(fake, REPO);
     r.deployments = r.deployments.filter((d) => d.environment !== "live"); // live never pushed
     const p = (await data.getProjectFresh(REPO))!;
     expect(p.lastKnown).toBeNull();
-    expect(p.waiting).toEqual([]);
+    expect(p.waiting.filter((c) => c.pr).map((c) => c.pr)).toEqual([11, 12]); // reviewable, so a first live deploy is possible
+    expect(p.waiting.filter((c) => !c.pr).map((c) => c.commit)).toEqual([sha(1), sha(2)]);
   });
 
   it("compares with what was seen running on live when there is no deploy record", async () => {
