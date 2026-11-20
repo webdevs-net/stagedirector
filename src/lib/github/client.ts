@@ -4,15 +4,24 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Gateway } from "./gateway";
 import { pool } from "./pool";
 
-/** Background GitHub calls allowed per minute (pages, polls). Button presses are never capped. */
-export function perMinute(): number {
-  const n = Number(process.env.STAGEDIRECTOR_GITHUB_PER_MINUTE);
-  return Number.isFinite(n) && n > 0 ? n : 5;
+/**
+ * Background GitHub calls (pages, polls) allowed per 15 minutes. Button presses are never capped,
+ * and 304 answers are free (GitHub does not count them), so they are not charged either.
+ * STAGEDIRECTOR_GITHUB_PER_15_MINUTES (default 600, about half of a GitHub App's 5,000 an hour).
+ * The old STAGEDIRECTOR_GITHUB_PER_MINUTE still works (times 15).
+ */
+export function per15Minutes(): number {
+  const n = Number(process.env.STAGEDIRECTOR_GITHUB_PER_15_MINUTES);
+  if (Number.isFinite(n) && n > 0) return n;
+  const m = Number(process.env.STAGEDIRECTOR_GITHUB_PER_MINUTE);
+  return Number.isFinite(m) && m > 0 ? m * 15 : 600;
 }
+/** Steady rate, per minute, of the 15-minute budget. */
+export const perMinute = (): number => per15Minutes() / 15;
 
 const gg = globalThis as unknown as { __sdGateway?: Gateway };
-/** The one gateway (survives dev hot reloads). See gateway.ts. */
-export const gateway: Gateway = (gg.__sdGateway ??= new Gateway({ perMinute: perMinute(), burst: Math.max(40, perMinute() * 4) }));
+/** The one gateway (survives dev hot reloads). See gateway.ts. The whole 15-minute budget may be used at once. */
+export const gateway: Gateway = (gg.__sdGateway ??= new Gateway({ perMinute: perMinute(), burst: per15Minutes() }));
 export const etagCache = gateway.etags;
 export const rateLimit = gateway.limit;
 /** True while the budget is nearly gone: background refreshes pause until it resets. */

@@ -18,9 +18,11 @@ export class EtagCache {
   wrap = async (request: RequestFn, options: Options, key: string): Promise<Resp> => {
     if ((options.method ?? "GET").toUpperCase() !== "GET") return request(options);
     const hit = this.map.get(key);
-    const opts = hit ? { ...options, headers: { ...options.headers, "if-none-match": hit.etag } } : options;
+    // Set the header on Octokit's own options object. A copy is silently ignored by
+    // Octokit's request hook, so GitHub never saw If-None-Match and nothing was ever a 304.
+    if (hit) options.headers = { ...options.headers, "if-none-match": hit.etag };
     try {
-      const res = await request(opts);
+      const res = await request(options);
       const etag = res.headers?.etag;
       if (typeof etag === "string" && res.status === 200) this.set(key, { etag, response: res });
       return res;
