@@ -33,7 +33,7 @@ test("reads the project, its stages and waiting PRs from GitHub", async ({ page 
 
 test("update staging follows the real run step by step to the end", async ({ page, request }) => {
   await page.goto(P);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   const win = page.getByRole("complementary", { name: "Runs in progress" });
   await expect(win.getByText(/Updating staging/)).toBeVisible();
   const run = await dispatched(request, "deploy", "staging");
@@ -46,7 +46,7 @@ test("update staging follows the real run step by step to the end", async ({ pag
 
 test("Stop cancels the run on GitHub", async ({ page, request }) => {
   await page.goto(P);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   const win = page.getByRole("complementary", { name: "Runs in progress" });
   await dispatched(request, "deploy", "staging");
   await ctl(request, "step");
@@ -64,7 +64,7 @@ test("Stop cancels the run on GitHub", async ({ page, request }) => {
 
 test("the technical log shows the real run log", async ({ page, request }) => {
   await page.goto(P);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   await dispatched(request, "deploy", "staging");
   await ctl(request, "finish");
   await page.goto(`${P}/updating?stage=staging`);
@@ -110,7 +110,7 @@ test("Claude's API request shows up and a person OKs it", async ({ page, request
 
 test("activity CSV includes GitHub runs", async ({ page, request }) => {
   await page.goto(P);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   await dispatched(request, "deploy", "staging");
   await ctl(request, "finish");
   const csv = await (await request.get("/api/activity?repo=acme/site&format=csv")).text();
