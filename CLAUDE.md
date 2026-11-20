@@ -36,3 +36,10 @@ Tailwind) on top of self-hosted GitHub Actions runners.
 
 ## Look
 Cool palette from the mockups: background #f2f6fa, text #1e2b3a, muted #5a6b7d, teal #0f8f8a / #dff5f3, blue #2563b8 / #e8f1fd, amber only for warnings. Nunito. Big rounded buttons (≥52px), details folded until opened.
+
+## Brand & design system
+- Approved by the owner (2026-11-20): concept B as the logo, concept D as the favicon/app icon.
+- Logo: `docs/brand/stage-director-logo.svg` (director's chair, star cut into the back). Icon/favicon: `docs/brand/stage-director-icon.svg` (star in a rounded tile).
+- Both are one-colour black masters; use them exactly as they are (no redrawing, cropping or rearranging). Colour comes from the palette under **Look** (teal #0f8f8a or text #1e2b3a; white when reversed).
+- Brief and rejected concepts: `docs/brand/BRIEF.md`, `docs/brand/concepts/`.
+- Not yet done: wiring the favicon into the app, replacing 🎬 in the README, colour/lockup files.

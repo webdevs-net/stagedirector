@@ -6,6 +6,8 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 
 ## Unreleased
 
+- Logo: director's chair with a star (docs/brand/stage-director-logo.svg) and star-tile icon; brand section in CLAUDE.md
+
 ## 0.5.0 (2026-11-19)
 
 First versioned release. Everything below shipped before versioning started.
