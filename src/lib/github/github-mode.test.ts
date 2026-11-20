@@ -174,14 +174,25 @@ describe("GitHub mode (fake GitHub)", () => {
 });
 
 describe("waiting changes", () => {
-  it("lists direct commits too, and everything when live was never pushed", async () => {
+  it("says live is unknown (no list, never 'matches') when live was never pushed or checked", async () => {
     const { data } = await load();
     fake.repos.clear();
     const r = seedTestRepo(fake, REPO);
     r.deployments = r.deployments.filter((d) => d.environment !== "live"); // live never pushed
-    const p = (await data.getProject(REPO))!;
-    expect(p.waiting.filter((c) => c.pr).map((c) => c.pr)).toEqual([11, 12]);
-    expect(p.waiting.filter((c) => !c.pr).map((c) => c.commit)).toEqual([sha(1), sha(2)]);
-    expect(p.waiting.find((c) => c.commit === sha(2))!.title).toBe("Commit 0202020");
+    const p = (await data.getProjectFresh(REPO))!;
+    expect(p.lastKnown).toBeNull();
+    expect(p.waiting).toEqual([]);
+  });
+
+  it("compares with what was seen running on live when there is no deploy record", async () => {
+    const { data } = await load();
+    fake.repos.clear();
+    const r = seedTestRepo(fake, REPO);
+    const liveDeploy = r.deployments.find((d) => d.environment === "live")!;
+    r.deployments = r.deployments.filter((d) => d.environment !== "live");
+    r.deployments.push({ ...liveDeploy, id: 9999, environment: "observed-live", payload: { actor: "version-check", source: "version-check" }, statuses: [] });
+    const p = (await data.getProjectFresh(REPO))!;
+    expect(p.lastKnown).toEqual({ commit: liveDeploy.sha, source: "observed" });
+    expect(p.waiting.map((c) => c.pr)).toEqual([11, 12]); // what is on staging but not on the commit seen on live
   });
 });

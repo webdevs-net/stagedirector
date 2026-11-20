@@ -127,7 +127,8 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
         {groups.map(([name, rows]) => {
           const ready = rows.filter((p) => p.waiting.length).length;
           const issues = rows.filter((p) => ["sync", "fail"].includes(healthOf(p))).length;
-          const summary = [`${rows.length} ${rows.length === 1 ? "project" : "projects"}`, ready ? `${ready} ready for live` : "", issues ? `${issues} need a look` : "", !ready && !issues ? "all up to date" : ""].filter(Boolean).join(" · ");
+          const unknown = rows.filter((p) => p.lastKnown === null).length;
+          const summary = [`${rows.length} ${rows.length === 1 ? "project" : "projects"}`, ready ? `${ready} ready for live` : "", issues ? `${issues} need a look` : "", unknown ? `${unknown} live not checked` : "", !ready && !issues && !unknown ? "all up to date" : ""].filter(Boolean).join(" · ");
           return (
             <details key={name} open={rows.some((p) => p.needsMe) || filter !== "all" || q !== ""} className="rounded-[22px] bg-white shadow-[0_4px_16px_rgba(30,43,58,.06)]">
               <summary className="flex min-h-16 flex-wrap items-center gap-3 px-5 py-2">
