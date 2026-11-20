@@ -35,7 +35,7 @@ export function RunnerBanner({ health, stages }: { health: Record<string, Runner
           detail={
             <>
               Affects {stages.filter((s) => s.runner === h.label).map((s) => s.name).join(", ")}{sinceText(h.offlineSince)}. Buttons for those stages will say so instead of starting.{" "}
-              <a href="https://github.com/netdevs-net/stagedirector/blob/main/engine/runner/README.md#when-the-runner-is-offline" target="_blank" rel="noreferrer" className="font-bold text-blue underline">How to bring it back</a>
+              <a href="https://github.com/webdevs-net/stagedirector/blob/main/engine/runner/README.md#when-the-runner-is-offline" target="_blank" rel="noreferrer" className="font-bold text-blue underline">How to bring it back</a>
             </>
           }
         />

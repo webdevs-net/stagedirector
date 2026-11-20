@@ -68,7 +68,7 @@ the tailnet with HTTPS. No public port, no public DNS, no inbound webhooks.
 1. **Get the code on ovh1** (as the deploy user):
 
    ```bash
-   git clone https://github.com/netdevs-net/stagedirector.git ~/stagedirector
+   git clone https://github.com/webdevs-net/stagedirector.git ~/stagedirector
    ```
 
 2. **Fill in the settings.** `deploy/.env.example` lists every variable. The OAuth

@@ -18,7 +18,8 @@ export function StagingCard({ name, branch, url, running, behindBy, commit, depl
   deployedAt: string | null;
   pinned?: boolean;
 }) {
-  const tone = running ? "busy" : behindBy > 0 || pinned ? "behind" : "ok";
+  const never = !running && !commit;
+  const tone = running ? "busy" : never || behindBy > 0 || pinned ? "behind" : "ok";
   const t = {
     ok: { bg: "bg-teal-soft", eyebrow: "text-[#0f6f6b]", ink: "text-teal-ink" },
     behind: { bg: "bg-amber-soft", eyebrow: "text-[#7a4800]", ink: "text-[#7a4800]" },
@@ -35,8 +36,8 @@ export function StagingCard({ name, branch, url, running, behindBy, commit, depl
         </>
       ) : (
         <>
-          <span className="text-xl font-extrabold">{behindBy === 0 ? `Up to date with ${branch}` : `${behindBy} behind ${branch}`}</span>
-          <span className={`text-[15px] ${t.ink}`}>Updated {timeAgo(deployedAt)}</span>
+          <span className="text-xl font-extrabold">{never ? "Not deployed yet" : behindBy === 0 ? `Up to date with ${branch}` : `${behindBy} behind ${branch}`}</span>
+          <span className={`text-[15px] ${t.ink}`}>{never ? "No update has finished here through Stage Director" : `Updated ${timeAgo(deployedAt)}`}</span>
         </>
       )}
       {url && <ButtonLink href={url} className={`mt-2.5 min-h-14 ${t.ink}`}>Open {name.toLowerCase()}</ButtonLink>}

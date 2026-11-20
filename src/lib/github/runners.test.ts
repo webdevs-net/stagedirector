@@ -76,28 +76,35 @@ describe("runner health against fake GitHub", () => {
 
   it("403 from GitHub: unknown, and runs still start", async () => {
     const { data, runners } = await load();
-    expect((await runners.runnerHealth(REPO, ["github"])).github.state).toBe("unknown");
+    expect((await runners.runnerHealth(REPO, ["testbox"])).testbox.state).toBe("unknown");
     const r = await data.performAction("dev", { repo: REPO, stageId: "staging", action: "deploy", commit: sha(4) });
     expect(r.ok).toBe(true);
   });
 
   it("online runner: online, runs start", async () => {
-    fake.repo(REPO).runners = [{ name: "ovh1-a", status: "online", busy: false, labels: ["self-hosted", "github"] }];
+    fake.repo(REPO).runners = [{ name: "ovh1-a", status: "online", busy: false, labels: ["self-hosted", "testbox"] }];
     const { data, runners } = await load();
-    expect((await runners.runnerHealth(REPO, ["github"])).github.state).toBe("online");
+    expect((await runners.runnerHealth(REPO, ["testbox"])).testbox.state).toBe("online");
     expect((await data.performAction("dev", { repo: REPO, stageId: "staging", action: "deploy", commit: sha(4) })).ok).toBe(true);
   });
 
   it("offline runner: offline since, and a run is refused instead of queued", async () => {
-    fake.repo(REPO).runners = [{ name: "mac-test", status: "offline", busy: false, labels: ["self-hosted", "github"] }];
+    fake.repo(REPO).runners = [{ name: "mac-test", status: "offline", busy: false, labels: ["self-hosted", "testbox"] }];
     const { data, runners } = await load();
-    const h = (await runners.runnerHealth(REPO, ["github"])).github;
+    const h = (await runners.runnerHealth(REPO, ["testbox"])).testbox;
     expect(h.state).toBe("offline");
     expect(h.offlineSince).toBeTruthy();
     const before = fake.repo(REPO).runs.length;
     const r = await data.performAction("dev", { repo: REPO, stageId: "staging", action: "deploy", commit: sha(4) });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/runner on github is offline/);
+    if (!r.ok) expect(r.error).toMatch(/runner on testbox is offline/);
     expect(fake.repo(REPO).runs.length).toBe(before);
+  });
+});
+
+describe("runner: github (GitHub-hosted)", () => {
+  it("is always online, even when the repo has no self-hosted runners", () => {
+    expect(classifyRunners([], ["github"]).github.state).toBe("online");
+    expect(classifyRunners(null, ["GitHub"]).GitHub.state).toBe("online");
   });
 });
