@@ -58,3 +58,19 @@ describe("Gateway", () => {
     expect(gw.summary().rows[0].notModified).toBe(1);
   });
 });
+
+describe("304s are free", () => {
+  it("a not-modified answer gives its budget slot back", async () => {
+    const gw = new Gateway({ perMinute: 1, burst: 2, now: () => 0 });
+    let n = 0;
+    // First call: 200 with an ETag; later calls: 304 when If-None-Match is sent on the same options object.
+    const req = async (o: { headers?: Record<string, string | undefined> }) => {
+      n++;
+      if (o.headers?.["if-none-match"] === "e1") throw Object.assign(new Error("not modified"), { status: 304 });
+      return { status: 200, url: "u", headers: { etag: "e1" }, data: { n } };
+    };
+    for (let i = 0; i < 5; i++) await gw.handle(req as never, { headers: {} }, "GET /a", "a", "poll");
+    expect(gw.calls.map((c) => c.outcome)).toEqual(["ok", "not-modified", "not-modified", "not-modified", "not-modified"]);
+    expect(n).toBe(5);
+  });
+});

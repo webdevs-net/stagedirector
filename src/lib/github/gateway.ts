@@ -3,9 +3,9 @@
 //  - counts calls per endpoint, per caller and per result (for /usage),
 //  - shares one ETag cache (304s are free against GitHub's limit),
 //  - shares identical GETs that are already in flight,
-//  - caps background calls (pages, polls) at STAGEDIRECTOR_GITHUB_PER_MINUTE
-//    (default 5) with a small burst for a cold start; button presses ("action")
-//    never wait on that cap,
+//  - caps background calls (pages, polls) at a 15-minute budget
+//    (STAGEDIRECTOR_GITHUB_PER_15_MINUTES, client.ts); button presses ("action")
+//    never wait on that cap, and 304 answers (free at GitHub) are given back,
 //  - backs off when GitHub says the hourly budget is low.
 // A capped call fails with GatewayBusy; page reads then keep their cached answer.
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -125,7 +125,10 @@ export class Gateway {
     try {
       const res = await p;
       this.noteLimit(res.headers);
-      this.record({ route, caller, outcome: this.etags.hits > before ? "not-modified" : "ok", status: res.status });
+      const notModified = this.etags.hits > before;
+      // GitHub does not count 304s, so neither does the budget.
+      if (notModified && caller !== "action") this.tokens = Math.min(this.opts.burst, this.tokens + 1);
+      this.record({ route, caller, outcome: notModified ? "not-modified" : "ok", status: res.status });
       return res;
     } catch (e) {
       const err = e as { status?: number; response?: { headers?: Record<string, unknown> } };

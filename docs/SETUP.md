@@ -137,7 +137,7 @@ capabilities, and memory/CPU caps (`DASHBOARD_MEMORY`, `DASHBOARD_CPUS`).
 
 Every GitHub REST call goes through `src/lib/github/gateway.ts`: counted per endpoint and
 caller, one ETag cache (304s are free), identical in-flight GETs shared, background calls
-capped at `STAGEDIRECTOR_GITHUB_PER_MINUTE` (default 5) with a burst for a cold start, and
+capped at `STAGEDIRECTOR_GITHUB_PER_15_MINUTES` (default 600; 304 answers are free and not counted), and
 paused when GitHub's hourly budget is under 100. Button presses are never capped. See `/usage`.
 
 Git facts come from a local copy kept with `git fetch` (not REST): `.stagedirector-cache/repos`.
