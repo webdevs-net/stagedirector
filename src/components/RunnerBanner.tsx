@@ -31,7 +31,11 @@ export function RunnerBanner({ health, stages }: { health: Record<string, Runner
         <Banner
           key={h.label}
           kind="sync"
-          title={`The runner on ${h.label} is offline. Updates will wait until it's back.`}
+          title={
+            h.names.length
+              ? `The runner on ${h.label} is offline. Updates will wait until it's back.`
+              : `No runner has the label “${h.label}”. Updates for it will wait in the queue until one is set up.`
+          }
           detail={
             <>
               Affects {stages.filter((s) => s.runner === h.label).map((s) => s.name).join(", ")}{sinceText(h.offlineSince)}. Buttons for those stages will say so instead of starting.{" "}
