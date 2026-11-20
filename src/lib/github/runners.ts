@@ -9,6 +9,9 @@ import { swr } from "./swr";
 // That endpoint needs Administration: read; without it GitHub answers 403/404 and
 // every runner is "unknown". Nothing here ever throws to a page.
 
+/** The `runner:` value that means a GitHub-hosted job (engine/contract.md). */
+export const GITHUB_HOSTED = "github";
+
 export type RunnerState = "online" | "offline" | "busy" | "unknown";
 
 export interface RunnerHealth {
@@ -41,6 +44,11 @@ const offlineSince = (g.__sdOfflineSince ??= new Map());
 export function classifyRunners(runners: GhRunner[] | null, labels: string[]): Record<string, RunnerHealth> {
   const out: Record<string, RunnerHealth> = {};
   for (const label of labels) {
+    // `runner: github` = GitHub-hosted (ubuntu-latest): nothing of ours to be offline.
+    if (label.toLowerCase() === GITHUB_HOSTED) {
+      out[label] = { label, state: "online", names: ["GitHub-hosted"] };
+      continue;
+    }
     if (!runners) {
       out[label] = { label, state: "unknown", names: [] };
       continue;
@@ -93,6 +101,7 @@ export async function runnerHealth(repo: string, labels: string[]): Promise<Reco
 /** Fresh (uncached) health of one label, for the check before a run starts. Never throws. */
 export async function runnerStateNow(gh: Octokit, repo: string, label: string | undefined): Promise<RunnerState> {
   if (!label) return "unknown";
+  if (label.toLowerCase() === GITHUB_HOSTED) return "online";
   const runners = await fetchRunners(gh, repo);
   return stampOffline(repo, classifyRunners(runners, [label]))[label].state;
 }

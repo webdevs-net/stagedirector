@@ -47,10 +47,10 @@ export default function StatesPage() {
       <h2 className="text-xl font-extrabold">Pills and buttons</h2>
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-2.5">
-          <span className="rounded-full bg-chip px-3.5 py-2 text-[15px] font-bold text-soft">Staging updates by itself when main changes</span>
+          <span className="rounded-full bg-chip px-3.5 py-2 text-[15px] font-bold text-soft">Staging updates by itself when the main branch changes</span>
         </div>
         <Button tone="blue" className="min-h-[72px] w-full rounded-[22px] text-[21px]">
-          <Icon name="refresh" size={24} /> Update staging from main (demo, does nothing)
+          <Icon name="refresh" size={24} /> Update staging from the main branch (demo, does nothing)
         </Button>
       </Card>
     </Page>

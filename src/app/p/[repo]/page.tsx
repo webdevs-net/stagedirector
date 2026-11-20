@@ -68,11 +68,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         <Card aria-labelledby="work-title" className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="work-title" className="text-2xl font-extrabold">Everyday work</h2>
-            {middle.trigger === "auto" && <span className="rounded-full bg-chip px-3.5 py-2 text-[15px] font-bold text-soft">{middle.name} updates by itself when {p.config.branch} changes</span>}
+            {middle.trigger === "auto" && <span className="rounded-full bg-chip px-3.5 py-2 text-[15px] font-bold text-soft">{middle.name} updates by itself when the {p.config.branch} branch changes</span>}
           </div>
           <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[1fr_56px_1fr]">
             <div className="flex flex-col gap-1.5 rounded-3xl bg-chip p-5">
-              <span className="text-sm font-extrabold tracking-wider text-muted">{p.config.branch.toUpperCase()}</span>
+              <span className="text-sm font-extrabold tracking-wider text-muted">{first.name.toUpperCase()} · BRANCH “{p.config.branch}”</span>
               <span className="text-xl font-extrabold">Your {first.name.toLowerCase()} work</span>
               <span className="text-[15px] text-muted">Latest: {p.waiting[p.waiting.length - 1]?.title ?? "no new changes"}</span>
               {first.url && <ButtonLink href={first.url} className="mt-2.5 min-h-14">Open {first.name.toLowerCase()} site</ButtonLink>}
@@ -80,7 +80,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
             <div aria-hidden="true" className="flex justify-center text-[#b9c7d6] max-md:rotate-90"><Icon name="arrow" size={40} /></div>
             <StagingCard
               name={middle.name}
-              branch={p.config.branch}
+              branch={`the ${p.config.branch} branch`}
               url={middle.url}
               running={midRunning}
               behindBy={st(middle.id)?.behindBy ?? 0}
@@ -94,7 +94,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               <Icon name="lock" /> {middle.name} is pinned, so it won&apos;t update. Unpin it below to update again.
             </p>
           ) : (
-            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from ${p.config.branch}`} />
+            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from the ${p.config.branch} branch`} />
           )}
         </Card>
         </RunOverlay>

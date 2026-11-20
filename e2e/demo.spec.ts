@@ -16,13 +16,13 @@ test("project page shows stages, waiting changes and the live lock", async ({ pa
   await page.goto(MP);
   await expect(page.getByRole("heading", { name: "Maria's Place" })).toBeVisible();
   await expect(page.getByText("New login page design")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Update staging from main/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Live site", exact: true })).toBeVisible();
 });
 
 test("update staging: run window, overlay, Stop", async ({ page }) => {
   await page.goto(MP);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   const win = page.getByRole("complementary", { name: "Runs in progress" });
   await expect(win.getByText(/Updating staging/)).toBeVisible();
   await expect(page.getByText("Busy · one run at a time").first()).toBeVisible();
@@ -33,7 +33,7 @@ test("update staging: run window, overlay, Stop", async ({ page }) => {
 test("a full demo run finishes and checks run afterwards", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto(MP);
-  await page.getByRole("button", { name: /Update staging from main/ }).click();
+  await page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ }).click();
   await page.goto(`${MP}/updating?stage=staging`);
   await expect(page.getByRole("progressbar").first()).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Staging updated" })).toBeVisible({ timeout: 40_000 });
@@ -45,9 +45,9 @@ test("pin and unpin staging", async ({ page }) => {
   await page.goto(MP);
   await page.getByRole("button", { name: "Pin staging" }).click();
   await expect(page.getByText(/Staging is pinned, so it won.t update/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Update staging from main/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Unpin staging" }).click();
-  await expect(page.getByRole("button", { name: /Update staging from main/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Update staging from (the )?main( branch)?/ })).toBeVisible();
 });
 
 test("developer preview cannot pin live or approve", async ({ page }) => {

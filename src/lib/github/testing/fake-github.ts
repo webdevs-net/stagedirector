@@ -395,7 +395,7 @@ stages:
     deploy: scripts/deploy.sh staging
     rollback: scripts/deploy.sh rollback staging {backup}
     smokeTest: [/]
-    runner: github
+    runner: testbox
   - id: live
     name: Live site
     url: https://test.invalid/
@@ -404,7 +404,7 @@ stages:
     deploy: scripts/deploy.sh live
     rollback: scripts/deploy.sh rollback live {backup}
     smokeTest: [/]
-    runner: github
+    runner: testbox
 tools: {clearCache: scripts/clear-cache.sh}
 `;
 
