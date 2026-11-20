@@ -2,6 +2,7 @@ import "server-only";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import { Gateway } from "./gateway";
+import { pool } from "./pool";
 
 /** Background GitHub calls allowed per minute (pages, polls). Button presses are never capped. */
 export function perMinute(): number {
@@ -62,15 +63,18 @@ export function getOctokit(): Octokit | null {
     cached = throughGateway(new Octokit({
       baseUrl,
       log,
+      request: { fetch: pool.fetchAs("app") },
       authStrategy: createAppAuth,
       auth: {
+        // Installation-token requests go through the pool too, counted as "app sign-in".
+        request: new Octokit({ baseUrl, request: { fetch: pool.fetchAs("app-auth") } }).request,
         appId: e.GITHUB_APP_ID,
         privateKey: e.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n"),
         installationId: Number(e.GITHUB_APP_INSTALLATION_ID),
       },
     }));
   } else if (e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN) {
-    cached = throughGateway(new Octokit({ log, auth: e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN, baseUrl }));
+    cached = throughGateway(new Octokit({ log, auth: e.STAGEDIRECTOR_GITHUB_TOKEN || e.GITHUB_TOKEN, baseUrl, request: { fetch: pool.fetchAs("token") } }));
   } else {
     cached = null;
   }
@@ -114,7 +118,7 @@ export function resetGithubClient() {
 
 /** Octokit acting as a person (their own OAuth token), for things GitHub must attribute to them. */
 export function personOctokit(token: string): Octokit {
-  return new Octokit({ log, auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
+  return new Octokit({ log, auth: token, baseUrl: process.env.GITHUB_API_URL || undefined, request: { fetch: pool.fetchAs("person") } });
 }
 
 /** True when the dashboard's own identity is a GitHub App (a bot), not a person's token. */

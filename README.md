@@ -13,6 +13,9 @@ Every live push saves a backup first, and undo is one click.
 
 <sub>Self-hosted · Runs on GitHub Actions · Works on your phone</sub>
 
+**Under the hood:** Next.js + React · GitHub Actions on your own runner · GitHub as the database (Deployments, statuses, refs) · code-owner live lock · cached, budgeted GitHub API with a counting connection pool · Claude-written update summaries
+<br>→ **[The technology behind Stage Director](docs/TECHNOLOGY.md)**
+
 </div>
 
 ---

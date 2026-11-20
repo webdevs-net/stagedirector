@@ -5,6 +5,7 @@ import "server-only";
 import { revalidateAll, swr } from "./github/swr";
 import { asCaller } from "./github/gateway";
 import { gateway, githubIdentity, rateLimit, rateLimited } from "./github/client";
+import { pool } from "./github/pool";
 import { headers } from "next/headers";
 
 /**
@@ -123,7 +124,7 @@ export async function refreshFromGithub(): Promise<void> {
 
 /** For /usage: our GitHub calls in the last hour and the remaining hourly budget. */
 export function apiUsage() {
-  return { identity: githubIdentity(), ...gateway.summary() };
+  return { identity: githubIdentity(), ...gateway.summary(), wire: pool.summary() };
 }
 
 export function isDemo(): boolean {
