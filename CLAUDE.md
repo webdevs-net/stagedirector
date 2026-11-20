@@ -27,5 +27,12 @@ Tailwind) on top of self-hosted GitHub Actions runners.
 - `engine/**` (workflow templates, runner setup, deploy contract docs) — engine
 - `src/lib/types.ts` — shared; change only by agreement, note it in docs/PLAN.md
 
+## Versions and branches
+
+- Version lives in `package.json` and follows SemVer; history is in `CHANGELOG.md`.
+- Every PR adds a line under **Unreleased** in `CHANGELOG.md`.
+- Release: bump with `npm version <x.y.z> --no-git-tag-version`, move the Unreleased notes under the new number, merge to `main`, then tag `v<x.y.z>` on the merge commit and publish a GitHub release from the changelog section.
+- Branches: `dev` for everyday work, `main` by pull request only (checks must pass), `live` by pull request only. Nobody pushes to `live` directly. Never force-push or delete these branches.
+
 ## Look
 Cool palette from the mockups: background #f2f6fa, text #1e2b3a, muted #5a6b7d, teal #0f8f8a / #dff5f3, blue #2563b8 / #e8f1fd, amber only for warnings. Nunito. Big rounded buttons (≥52px), details folded until opened.
