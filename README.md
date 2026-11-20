@@ -2,238 +2,165 @@
 
 # 🎬 Stage Director
 
-**A friendly deploy dashboard for all your sites.**
-Code moves **local → staging → live**. Anyone on the team can update staging.
-Only code owners can put anything live, and every live push has a backup and a one-click undo.
+### Every site. Every stage. One calm screen.
 
-<img src="docs/screenshots/home.png" alt="Stage Director home: every project with its stages" width="900">
+**The friendly deploy dashboard for teams who run lots of websites.**
+Code moves **local → staging → live** with big, plain-English buttons.
+Anyone on the team can update staging. Only code owners can put anything live.
+Every live push saves a backup first, and undo is one click.
+
+<img src="docs/screenshots/home.png" alt="Stage Director home screen: every project with its stages and a Waiting on you banner" width="900">
+
+<sub>Self-hosted · Runs on GitHub Actions · Works on your phone</sub>
 
 </div>
 
 ---
 
-## Why
+## Ship on a Friday. Sleep on a Friday.
 
-Unfinished changes reaching a live site is how sites go down. Stage Director makes the safe path the easy one:
-
-- **One screen for every project.** See what's on each stage, what's waiting, and what needs you.
-- **Big, plain-English buttons.** "Update staging from main", "Put 4 changes on the live site?" No terminals, no jargon.
-- **Live is locked.** Only a person listed as a code owner can approve and push live. Scripts, bots and AI sessions cannot.
-- **Safety net.** Every push saves a backup first. If the site stops loading afterwards, it's put back by itself.
-
-## A tour
-
-### All your projects
-
-Grouped by client, with a coloured dot for each stage, starred favourites, and a **Waiting on you** banner listing what's ready for live, out of sync, or failed.
-
-<img src="docs/screenshots/home.png" alt="Home screen" width="900">
-
-### A project
-
-Everyday work up top: your branch on the left, staging on the right, one big button between them. Banners above say what needs attention. Below, the changes that are on staging but not on the live site yet, each in plain English.
-
-<img src="docs/screenshots/project.png" alt="Project page for Maria's Place" width="900">
-
-The page adapts to who you are. A **code owner** gets **Review and approve**, then **Put on live**. A **developer** sees the same steps with **Ask a code owner** instead, and live stays locked.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/project-developer.png" alt="Developer view"><br><sub><b>Developer view</b>: live is locked, "Ask a code owner"</sub></td>
-<td width="50%"><img src="docs/screenshots/review.png" alt="Review screen"><br><sub><b>Before you put it live</b>: before & after for each change, then the to-do list for live</sub></td>
-</tr>
-</table>
-
-### Putting it live
-
-The live button says exactly what will change and who will see it. It warns when files were edited on the server outside git, and it won't go until a code owner has approved this exact version.
-
-<img src="docs/screenshots/live.png" alt="Put 4 changes on the live site?" width="900">
-
-### Watching it happen
-
-A friendly progress view: checking what's changing, saving a backup, copying files, making sure the site still loads. You can leave the page; a small window keeps you posted. The full technical log is one click away.
-
-<img src="docs/screenshots/updating.png" alt="Updating staging progress" width="900">
-
-### History, Toolbox and banners
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/history.png" alt="History"><br><sub><b>History</b>: every update, approval, pause and undo, by whom and when</sub></td>
-<td width="50%"><img src="docs/screenshots/toolbox.png" alt="Toolbox"><br><sub><b>Toolbox</b>: clear cache, back up, copy live to staging, update plugins, Safety net, Sync check, Site watch, Quiet hours</sub></td>
-</tr>
-<tr>
-<td colspan="2"><img src="docs/screenshots/banners.png" alt="Banners"><br><sub><b>Banners</b>: someone is updating, out of sync, Safety net undid an update, quiet hours, staging ready to look at</sub></td>
-</tr>
-</table>
-
-### On your phone
-
-Every screen works at phone width, with big rounded buttons.
-
-<table>
-<tr>
-<td><img src="docs/screenshots/home-phone.png" alt="Home on phone" width="200"></td>
-<td><img src="docs/screenshots/project-phone.png" alt="Project on phone" width="200"></td>
-<td><img src="docs/screenshots/live-phone.png" alt="Put it live on phone" width="200"></td>
-<td><img src="docs/screenshots/updating-phone.png" alt="Updating on phone" width="200"></td>
-</tr>
-</table>
-
-## Features
+Sites go down when unfinished work slips onto the live site, or when someone fixes a file on the server and the next deploy quietly wipes it out. Stage Director makes the safe path the easy one.
 
 | | |
 |---|---|
-| 🗂️ **Many projects** | One dashboard for every site, grouped by client, with search, filters and stars |
-| 🚦 **Stages in order** | local → staging → live; a version can only go live after it's been on staging |
-| 🔐 **Code-owner live gate** | Only people in the project's `CODEOWNERS` can approve and push live, enforced in the workflow, not just the UI |
-| ✅ **Approve this exact version** | An approval is tied to one commit; anything newer needs a new approval |
-| 🛟 **Safety net** | Backup before every push; automatic undo if the smoke test fails; one-click undo afterwards |
+| 🧭 **See everything at a glance** | 5 sites or 50: what's on each stage, what's waiting, and what needs you. |
+| 🔘 **Buttons, not terminals** | "Update staging from main." "Put 4 changes on the live site?" No jargon, no SSH. |
+| 🔐 **Live is locked** | Only a person listed as a code owner can approve and push live. Scripts, bots and AI helpers can't. |
+| 🛟 **A safety net under every push** | A backup is saved first. If the site stops loading, it's put back automatically. |
+
+---
+
+## All your sites, one screen
+
+> *"What's waiting on me?" Answered before your coffee cools.*
+
+Projects are grouped by client, with a coloured bar for each stage, starred favourites, search and filters. The **Waiting on you** banner adds up what's ready for live, what's out of sync, which checks failed, and which requests need a yes.
+
+<img src="docs/screenshots/home.png" alt="Home screen with grouped projects" width="900">
+
+---
+
+## Every change, in plain English
+
+> *Know what you're shipping, not just which commit.*
+
+Each project page puts everyday work up front: your branch on the left, staging on the right, one big button between them. Below that, every change sitting on staging but not on the live site yet gets a title and a summary anyone can read, with **See on staging** and **See live now** buttons side by side.
+
+<img src="docs/screenshots/project.png" alt="Project page for Maria's Place with banners and everyday work" width="900">
+
+Banners say what needs attention before it turns into a problem:
+
+- **Out of sync**: someone changed a file on the live server directly. Stage Director spots it before a deploy overwrites it.
+- **Staging is ready to look at**: changes are waiting for a review.
+- **Claude asks**: an AI assistant can *ask* to update staging, and a person says **OK, do it** or **Decline**.
+
+<img src="docs/screenshots/banners.png" alt="All banner types" width="900">
+
+---
+
+## Going live, on purpose
+
+> *The live button tells you exactly what will happen. Then it waits for the right person.*
+
+Before anything reaches visitors, Stage Director shows the list of changes, warns about files edited on the server, and explains what kind of update it will be. It won't go until a **code owner has approved that exact version**. Anything newer needs a fresh approval.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/review.png" alt="Review and approve screen"><br><sub><b>Review and approve</b>: before and after for each change, then the to-do list for live</sub></td>
+<td width="50%"><img src="docs/screenshots/live.png" alt="Put 4 changes on the live site?"><br><sub><b>Put it live</b>: what changes, who sees it, and how to undo</sub></td>
+</tr>
+</table>
+
+**Developers** see the same steps with **Ask a code owner**. Live stays locked for them, and that rule is checked inside the deploy workflow itself, not just hidden in the UI.
+
+---
+
+## Watch it happen, or walk away
+
+> *A progress bar you can actually read.*
+
+Checking what's changing → saving a backup → copying files → making sure the site still loads. Leave the page if you like: a small window follows you around with the progress and a **Stop** button. While a run is going, the project dims so nobody starts a second one by mistake.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/updating.png" alt="Updating staging progress page"><br><sub><b>Progress</b>: four friendly steps, with the technical log one click away</sub></td>
+<td width="50%"><img src="docs/screenshots/running.png" alt="Project dimmed while a run is in progress, with the floating run window"><br><sub><b>One run at a time</b>: the project dims and the run window keeps you posted</sub></td>
+</tr>
+</table>
+
+---
+
+## A toolbox for the jobs in between
+
+> *Everything you used to SSH in for.*
+
+Clear the cache, save a backup, copy live to staging, update plugins. Plus the switches that keep you safe: **Safety net**, **Sync check**, **Site watch** and **Quiet hours** (no live updates outside working hours).
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/toolbox.png" alt="Toolbox"><br><sub><b>Toolbox</b>: one-click maintenance jobs</sub></td>
+<td width="50%"><img src="docs/screenshots/history.png" alt="History"><br><sub><b>History</b>: who did what, when, with a link to the full log</sub></td>
+</tr>
+</table>
+
+---
+
+## Deploy from the couch
+
+> *Every screen works at phone width, with thumb-sized buttons.*
+
+<table>
+<tr>
+<td><img src="docs/screenshots/home-phone.png" alt="Home on a phone" width="200"></td>
+<td><img src="docs/screenshots/project-phone.png" alt="Project on a phone" width="200"></td>
+<td><img src="docs/screenshots/live-phone.png" alt="Put it live on a phone" width="200"></td>
+<td><img src="docs/screenshots/updating-phone.png" alt="Updating on a phone" width="200"></td>
+</tr>
+</table>
+
+---
+
+## Everything in the box
+
+| | |
+|---|---|
+| 🗂️ **Many projects** | Every site in one place, grouped by client, with search, filters and stars |
+| 🚦 **Stages in order** | local → staging → live. Nothing reaches live without passing through staging first |
+| 🔐 **Code-owner live gate** | Only people listed in the project's `CODEOWNERS` can approve and push live |
+| ✅ **Approve this exact version** | An approval covers one commit. Anything newer needs a new approval |
+| 🤖 **AI asks, people decide** | AI assistants can request a staging update. A person always presses OK |
+| 🛟 **Safety net** | Backup before every push, automatic undo if the site stops loading, one-click undo afterwards |
+| 💾 **Save a backup** | One-click off-site backup (e.g. UpdraftPlus to Backblaze) |
 | 🔎 **Sync check** | Flags files changed on the server outside git before they get overwritten |
 | 📌 **Pin a stage** | Freeze staging or live so nothing moves until you unpin |
-| 🌙 **Quiet hours** | No live updates outside working hours |
-| 🧾 **History** | Who did what, when, with links to the full log |
-| 📱 **Phone-friendly** | Every screen works on a phone |
+| 🌙 **Quiet hours** | No live updates outside the hours you choose |
+| 🧾 **Activity record** | Every update, approval, pin and undo, by whom and when |
+| 💻 **Local mode** | See your uncommitted files and unpushed commits next to staging |
+| 📱 **Phone-friendly** | Every screen, every button |
 
-## How it works
+---
 
-```
- Dashboard (Next.js)  ──starts──▶  GitHub Actions workflow  ──runs on──▶  self-hosted runner (ovh1)
-        ▲                               │  checks the rules                    │ SSH, key from a
-        └──── reads status, history ────┘  records Deployments                 ▼ GitHub Environment
-                                                                     project's own deploy script → host
-```
+## Yours, not rented
 
-- **The dashboard never talks to hosting.** Its buttons start GitHub workflow runs; status, logs and history come from the GitHub API.
-- **The engine** ([`engine/`](engine/)) is one workflow each project copies, plus the project's own deploy script. Before anything moves, the workflow checks who is asking, whether this exact commit is approved by a code owner, whether the previous stage is on that commit, and whether the stage is pinned. The host's SSH key lives only in a GitHub Environment that releases it only to runs from the main branch, with a separate key per stage.
-- **The live lock** is two things together: a recorded approval of that exact commit by a person listed in `CODEOWNERS` (checked inside the workflow; bots and AI sessions can't pass), and live secrets that only `main` can use. On the current GitHub Pro plan with private repos, GitHub Environments can't require a reviewer. GitHub Enterprise, or a public repo, would add Environment required reviewers as a third lock. Details: [deploy contract](engine/contract.md#live-gate-what-the-workflow-checks).
-- **Each project** has a `stagedirector.yml` describing its stages ([example](examples/mariasplace.stagedirector.yml)) and a deploy command that follows the [deploy contract](engine/contract.md).
+- **Self-hosted.** Runs in Docker on your own server, reachable only over your private network (e.g. Tailscale). No public port.
+- **Built on GitHub Actions.** Buttons start ordinary workflow runs on your own runner. The dashboard never holds your hosting keys; they stay in GitHub Environments.
+- **Works with what you have.** Each project brings its own deploy script, whether that's WordPress on shared hosting, a Node app or a static site. Add a small `stagedirector.yml` and a workflow file, and it shows up on the dashboard.
+- **No per-seat pricing.** It runs on your server, under your control.
 
-| Where | What |
-|---|---|
-| [`src/app`](src/app), [`src/components`](src/components) | Screens |
-| [`src/lib/github`](src/lib/github), [`src/lib/auth`](src/lib/auth) | GitHub data layer, sign-in, roles |
-| [`src/lib/types.ts`](src/lib/types.ts) | Shared types |
-| [`engine/workflow`](engine/workflow) | The workflow and live gate |
-| [`engine/contract.md`](engine/contract.md) | What a project's deploy command must do |
-| [`engine/runner`](engine/runner) | Runner setup for ovh1 (for the owner to run by hand) |
+---
 
-## Run it locally
+## Try it in a minute
 
 ```bash
 npm install
 ```
 
 ```bash
-STAGEDIRECTOR_DEV_LOGIN=your-login npm run dev
+STAGEDIRECTOR_DEV_LOGIN=you npm run dev
 ```
 
-Without GitHub credentials it runs on **sample data** (what the screenshots show), and every button can be tried. To use real projects, copy `.env.example` to `.env.local` and fill in the GitHub OAuth app, a GitHub App or token, and `STAGEDIRECTOR_REPOS`.
+Open http://localhost:53100. Without GitHub credentials it runs on **sample data** (what you see in these screenshots), and every button works.
 
-## Tests
+To refresh the screenshots, start the demo on port 53110 and run `node scripts/screenshots.mjs`.
 
-```bash
-npm test
-```
-
-Unit tests, plus **GitHub mode end to end against a fake GitHub API**
-(`src/lib/github/testing/fake-github.ts`): reading stages, starting and following runs, Stop,
-pins, approvals, Claude requests, forged log records. The fake also plays the engine's workflow.
-
-```bash
-npx playwright install chromium
-```
-
-```bash
-npm run e2e
-```
-
-Browser tests (`e2e/`): every screen and button in demo mode, phone-width layout, and GitHub mode
-(a second dev server pointed at the fake GitHub, signed in as a code owner). CI runs all of it on
-every pull request (`.github/workflows/ci.yml`); no secrets needed.
-
-## Run it on ovh1 (Docker, Tailscale only)
-
-Written for the owner to run by hand; nothing here has been run against the server.
-The dashboard listens on `127.0.0.1:3100` only and `tailscale serve` publishes it to
-the tailnet with HTTPS. No public port, no public DNS, no inbound webhooks.
-
-1. **Get the code on ovh1** (as the deploy user):
-
-   ```bash
-   git clone https://github.com/netdevs-net/stagedirector.git ~/stagedirector
-   ```
-
-2. **Fill in the settings.** `deploy/.env.example` lists every variable. The OAuth
-   client secret, `AUTH_SECRET` and the GitHub App key are typed in by the owner only.
-
-   ```bash
-   cd ~/stagedirector/deploy && cp .env.example .env && chmod 600 .env
-   ```
-
-3. **Start it.** Dashboard only:
-
-   ```bash
-   docker compose up -d --build
-   ```
-
-   Or the dashboard and the self-hosted runner together (needs `engine/compose/.env`, see
-   [engine/compose/README.md](engine/compose/README.md)):
-
-   ```bash
-   docker compose -f docker-compose.yml -f with-runner.yml up -d --build
-   ```
-
-4. **Check it is healthy** (Docker's healthcheck calls the same URL every 30 s):
-
-   ```bash
-   curl -s http://127.0.0.1:3100/api/health
-   ```
-
-5. **Publish it on the tailnet** with Tailscale's own HTTPS certificate:
-
-   ```bash
-   sudo tailscale serve --bg --https=443 http://127.0.0.1:3100
-   ```
-
-   Then open `https://<ovh1's tailnet name>/`. To use `stagedirector.webdevs.net` instead,
-   point a DNS record at ovh1's **tailnet** IP (100.x) and use a DNS-challenge certificate;
-   set `AUTH_URL` to whichever address people use, and add it to the OAuth app's callbacks.
-   Never use `tailscale funnel` (that would make it public).
-
-6. **Update later:** `git pull && docker compose up -d --build` in `deploy/`.
-
-The container runs as an unprivileged user with a read-only file system, no Linux
-capabilities, and memory/CPU caps (`DASHBOARD_MEMORY`, `DASHBOARD_CPUS`).
-
-## Adding a project
-
-1. Add `stagedirector.yml` to the project's repo ([example](examples/mariasplace.stagedirector.yml)).
-2. Copy [`engine/workflow/stagedirector.yml`](engine/workflow/stagedirector.yml) to `.github/workflows/`.
-3. Make the deploy script follow the [contract](engine/contract.md).
-4. Add a `CODEOWNERS` file, protect `main`, and create the `stagedirector-<stage>` environments ([runner guide](engine/runner/README.md)).
-
-## Live updates and local mode
-
-- Pages re-read GitHub every 15 s while visible, on window focus and right after a button
-  press ("Updated Xs ago", top right). GET requests send `If-None-Match`; unchanged answers
-  come back as 304 and do not use rate limit (`src/lib/github/etag.ts`).
-- **Local mode**: when the dashboard is opened at `localhost`, a project page shows the
-  local checkout's uncommitted files and unpushed commits, with the push command to copy.
-  Map repos to folders in `stagedirector.local.json` (git-ignored; see
-  `stagedirector.local.example.json`) or `STAGEDIRECTOR_LOCAL_PATHS="owner/repo=/path"`.
-  Read-only: it never commits or pushes.
-- **Outside deploys** (e.g. `scripts/deploy.sh staging` from a terminal): see
-  `engine/contract.md` "Outside deploys". Display only; the live gate is unchanged.
-
-## GitHub budget (gateway)
-
-Every GitHub REST call goes through `src/lib/github/gateway.ts`: counted per endpoint and
-caller, one ETag cache (304s are free), identical in-flight GETs shared, background calls
-capped at `STAGEDIRECTOR_GITHUB_PER_MINUTE` (default 5) with a burst for a cold start, and
-paused when GitHub's hourly budget is under 100. Button presses are never capped. See `/usage`.
-
-Git facts come from a local copy kept with `git fetch` (not REST): `.stagedirector-cache/repos`.
-A runner on the same machine can report run progress through a local file (engine/contract.md).
-Use a GitHub App or `STAGEDIRECTOR_GITHUB_TOKEN` so the dashboard has its own hourly limit.
+**Ready for real projects?** See **[Setup and internals](docs/SETUP.md)**: how it works, adding a project, running it on a server, tests, and the GitHub rate-limit budget.
