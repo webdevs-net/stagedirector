@@ -60,3 +60,24 @@ describe("GitHub budget for one visible tab", () => {
     expect(actionsOk).toEqual([true, true, true]);
   });
 });
+
+describe("a page someone opened", () => {
+  const ok = async () => ({ status: 200, url: "u", headers: {}, data: {} });
+  it("waits for a free slot instead of failing; a poll still fails at once", async () => {
+    let t = 0;
+    const gw = new Gateway({ perMinute: 6, burst: 1, now: () => t, sleep: async (ms) => { t += ms; } });
+    await gw.handle(ok, {}, "GET /x", "GET /x/1", "poll"); // uses the only token
+    await expect(gw.handle(ok, {}, "GET /x", "GET /x/2", "poll")).rejects.toBeInstanceOf(GatewayBusy);
+    const start = t;
+    await expect(gw.handle(ok, {}, "GET /x", "GET /x/3", "page")).resolves.toMatchObject({ status: 200 });
+    expect(t - start).toBeGreaterThan(0);
+    expect(t - start).toBeLessThanOrEqual(11_000); // one token at 6 a minute = 10 s
+  });
+  it("gives up after pageWaitMs", async () => {
+    let t = 0;
+    const gw = new Gateway({ perMinute: 1, burst: 1, now: () => t, sleep: async (ms) => { t += ms; }, pageWaitMs: 5_000 });
+    await gw.handle(ok, {}, "GET /x", "GET /x/1", "page");
+    await expect(gw.handle(ok, {}, "GET /x", "GET /x/2", "page")).rejects.toBeInstanceOf(GatewayBusy);
+    expect(t).toBeLessThanOrEqual(5_000);
+  });
+});

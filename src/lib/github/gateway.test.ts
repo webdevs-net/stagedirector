@@ -13,11 +13,11 @@ describe("Gateway", () => {
     const c = clock();
     const gw = new Gateway({ perMinute: 5, burst: 2, now: c.now });
     const req = async () => ok();
-    await gw.handle(req, {}, "GET /a", "a1", "page");
-    await gw.handle(req, {}, "GET /a", "a2", "page");
-    await expect(gw.handle(req, {}, "GET /a", "a3", "page")).rejects.toBeInstanceOf(GatewayBusy);
+    await gw.handle(req, {}, "GET /a", "a1", "poll");
+    await gw.handle(req, {}, "GET /a", "a2", "poll");
+    await expect(gw.handle(req, {}, "GET /a", "a3", "poll")).rejects.toBeInstanceOf(GatewayBusy);
     c.add(12_000); // 5/min = one per 12 s
-    await gw.handle(req, {}, "GET /a", "a4", "page");
+    await gw.handle(req, {}, "GET /a", "a4", "poll");
     expect(gw.summary().rows[0]).toMatchObject({ route: "GET /a", ok: 3, held: 1 });
   });
 
