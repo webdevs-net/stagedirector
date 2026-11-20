@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 Stage Director
+# <img src="public/brand/stage-director-logo-teal.svg" alt="" width="40" height="40" align="center"> Stage Director
 
 ### Every site. Every stage. One calm screen.
 
