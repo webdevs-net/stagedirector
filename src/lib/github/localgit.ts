@@ -8,6 +8,7 @@
 // Fetch:  at most once a minute per repo, and only when a page asks (no timers).
 import "server-only";
 import { execFile } from "node:child_process";
+import { pool } from "./pool";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import type { Octokit } from "@octokit/rest";
@@ -73,9 +74,11 @@ export async function localGit(gh: Octokit, repo: string): Promise<LocalGit | nu
         await git(["init", "--bare", "-q", dir]);
         await git(["remote", "add", "origin", (process.env.STAGEDIRECTOR_GIT_REMOTE ?? "https://github.com/{repo}.git").replace("{repo}", repo)], { cwd: dir });
       }
-      await git(["fetch", "-q", "--prune", "origin", "+refs/heads/*:refs/heads/*", "+refs/stagedirector/*:refs/stagedirector/*"], { cwd: dir, env, timeout: 120_000 });
+      await git(["fetch", "-q", "--prune", "origin", "+refs/heads/*:refs/heads/*", "+refs/stagedirector/*:refs/stagedirector/*"], { cwd: dir, env, timeout: 120_000 })
+        .then(() => pool.noteGit("fetch", repo, true), (e) => { pool.noteGit("fetch", repo, false); throw e; });
       // Remember the remote's default branch (git protocol, no API).
-      const sym = await git(["ls-remote", "--symref", "origin", "HEAD"], { cwd: dir, env }).catch(() => "");
+      const sym = await git(["ls-remote", "--symref", "origin", "HEAD"], { cwd: dir, env })
+        .then((o) => { pool.noteGit("ls-remote", repo, true); return o; }, () => { pool.noteGit("ls-remote", repo, false); return ""; });
       const m = /ref: refs\/heads\/(\S+)\s+HEAD/.exec(sym);
       if (m) await git(["symbolic-ref", "HEAD", `refs/heads/${m[1]}`], { cwd: dir });
       s.fetchedAt = Date.now();

@@ -10,7 +10,7 @@ const WHO: Record<string, string> = {
   none: "Not connected (demo data)",
 };
 
-const IDENTITY: Record<string, string> = { app: "GitHub App", "app-auth": "App sign-in (token)", person: "a person's own token", token: "Stage Director token" };
+const IDENTITY: Record<string, string> = { app: "GitHub App", "app-auth": "App sign-in (token)", person: "a person's own token", token: "Stage Director token", git: "git (local copy; not the API limit)" };
 
 const CALLER: Record<string, string> = { page: "page view", poll: "timed refresh", action: "button press", runs: "run window", other: "other" };
 
@@ -36,6 +36,7 @@ export default function UsagePage() {
           ["GitHub counted this window", main ? String(main.used) : "—"],
           ["Last minute", `${w.lastMinute} (cap ${u.perMinute} in the background)`],
           ["Connections", `${w.connectionsOpened} opened, ${reused} reused`],
+          ["git fetches, last hour", String(w.git)],
         ].map(([k, v]) => (
           <div key={k} className="flex flex-col gap-1 rounded-[20px] bg-white p-4">
             <span className="text-sm font-bold text-muted">{k}</span>
@@ -93,7 +94,7 @@ export default function UsagePage() {
           </table>
         </div>
       </section>
-      <p className="text-sm text-muted">Counts are kept in memory and start again when the dashboard restarts. Git data (branches, commits, how far behind) is read from a local copy with git fetch and does not appear here.</p>
+      <p className="text-sm text-muted">Wire counts are saved to a small temporary file (github-calls.f32 in the system temp folder), so a restart keeps the last hour. The “why” table is memory only. Git data (branches, commits, how far behind) comes from a local copy; its git fetch and ls-remote runs are listed above as git and do not use the REST API limit.</p>
     </Page>
   );
 }

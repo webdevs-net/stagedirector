@@ -48,3 +48,29 @@ describe("Pool over a real socket", () => {
     await p.agent.close();
   });
 });
+
+describe("saved counts (Float32 file)", () => {
+  it("round-trips calls and survives a restart", async () => {
+    const { mkdtempSync, statSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { encodeCalls, decodeCalls } = await import("./pool");
+    const file = `${mkdtempSync(`${tmpdir()}/sd-pool-`)}/github-calls.f32`;
+    let t = Date.UTC(2026, 10, 20, 9, 0, 0);
+    const a = new Pool(() => t, file);
+    a.note("app", "GET", "https://api.github.com/repos/o/r/deployments", 200);
+    t += 61_500;
+    a.note("person", "POST", "https://api.github.com/repos/o/r/statuses/" + "a".repeat(40), 201);
+    a.noteGit("fetch", "o/r", true);
+    a.flush();
+    expect(statSync(file).size).toBe((5 + 3 * 4) * 4);
+    const b = new Pool(() => t, file);
+    expect(b.calls).toEqual(a.calls.map((c) => ({ at: c.at, identity: c.identity, method: c.method, route: c.route, status: c.status })));
+    expect(b.summary()).toMatchObject({ sent: 2, git: 1 });
+    // older than an hour is dropped on load
+    t += 61 * 60_000;
+    expect(new Pool(() => t, file).calls).toEqual([]);
+    const { bytes, routes } = encodeCalls(a.calls);
+    expect(decodeCalls(bytes, routes)[1].at).toBe(a.calls[1].at);
+    expect(decodeCalls(Buffer.from("nope"), [])).toEqual([]);
+  });
+});
