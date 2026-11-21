@@ -10,6 +10,11 @@ ARG WRANGLER_VERSION=3.99.0
 # Optional Ubuntu mirror, e.g. http://ubuntu.mirrors.ovh.net/ubuntu/ on OVH hosts, where
 # archive/security.ubuntu.com can time out and apt-get update hangs. Empty = Ubuntu defaults.
 ARG APT_MIRROR=
+# Headless Chromium for the review screenshots (about 350 MB). WITH_BROWSER=false leaves it out;
+# the workflow then skips screenshots on this runner.
+ARG WITH_BROWSER=true
+ARG PLAYWRIGHT_VERSION=1.49.1
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=SC2016
@@ -36,6 +41,12 @@ COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
  && npm install -g "wrangler@${WRANGLER_VERSION}" \
+ && if [ "$WITH_BROWSER" = true ]; then \
+      npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+      && playwright install --with-deps chromium \
+      && chmod -R a+rX /opt/ms-playwright \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi \
  && npm cache clean --force
 RUN install -d -o runner -g runner /home/runner/state /home/runner/_work
 COPY entrypoint.sh /usr/local/bin/stagedirector-entrypoint

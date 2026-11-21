@@ -2,6 +2,8 @@ import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { BackLink, ButtonLink, Card, Icon, Page } from "@/components/ui";
 import { CheckPanel } from "@/components/CheckPanel";
+import { ScreenPairs } from "@/components/ScreenPairs";
+import { getScreens } from "@/lib/data";
 
 export default async function ReviewPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
@@ -12,6 +14,8 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
   const isOwner = viewer.role === "code-owner";
   const before = p.config.stages[p.config.stages.length - 2];
   const slug = decodeURIComponent((await params).repo);
+  const size = sp.size === "phone" ? "phone" : "desktop";
+  const screens = before ? await getScreens(slug, before.id) : null;
 
   return (
     <Page width="max-w-[860px]">
@@ -25,16 +29,16 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
             <h2 id="ba-title" className="text-xl font-extrabold">Before &amp; after</h2>
             <span className="font-bold text-muted">{c.title} · {idx + 1} of {p.waiting.length}</span>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <figure className="flex flex-col gap-2">
-              <div className="flex aspect-[4/3] items-center justify-center rounded-2xl bg-chip text-center text-muted">[Screenshot: live now]</div>
-              <figcaption className="font-bold">Live now</figcaption>
-            </figure>
-            <figure className="flex flex-col gap-2">
-              <div className="flex aspect-[4/3] items-center justify-center rounded-2xl bg-teal-soft text-center text-teal-ink">[Screenshot: staging]</div>
-              <figcaption className="font-bold">After the update</figcaption>
-            </figure>
-          </div>
+          <ScreenPairs
+            screens={screens}
+            slug={slug}
+            liveId={last.id}
+            liveName={last.name}
+            afterId={before?.id ?? ""}
+            afterName={before?.name ?? "Staging"}
+            size={size}
+            sizeHref={(s) => `${base}/review?i=${idx}${s === "phone" ? "&size=phone" : ""}${q ? "&as=developer" : ""}`}
+          />
           <p className="text-soft">{c.summary}</p>
           <nav aria-label="Changes" className="flex flex-wrap gap-2">
             {p.waiting.map((w, i) => (

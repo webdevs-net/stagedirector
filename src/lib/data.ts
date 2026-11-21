@@ -292,3 +292,12 @@ export async function runnerStatus(projects: { repo: string; config: { stages: {
   for (const m of per) for (const [label, h] of Object.entries(m)) if (!out[label] || out[label].state === "unknown") out[label] = h;
   return out;
 }
+
+export type { ScreenSet, Shot } from "./github/screens";
+/** Newest review screenshots for a stage (taken by the workflow after a deploy). Null in demo mode or when none exist. */
+export async function getScreens(repoSlug: string, stageId: string): Promise<import("./github/screens").ScreenSet | null> {
+  if (!live()) return null;
+  const repo = slugToRepo(repoSlug);
+  const { latestScreens } = await import("./github/screens");
+  return swr(`screens:${repo}:${stageId}`, 5 * 60_000, () => latestScreens(repo, stageId)).catch(() => null);
+}

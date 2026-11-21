@@ -566,6 +566,99 @@ jobs:
             ;;
           esac
 
+      - name: Take screenshots for review (optional)
+        # After a deploy that passed: pictures of this stage's pages and, when this is not the last
+        # stage, the same pages on the last stage (live) as it is now. Pages = smokeTest + checks pages.
+        # Saved as the run artifact stagedirector-screens-<stage>; the dashboard's review page shows
+        # them. Needs Playwright + Chromium on the runner (GitHub-hosted: installed here; the Stage
+        # Director runner image: built in). Never fails the run.
+        if: success() && needs.gate.outputs.action == 'deploy'
+        continue-on-error: true
+        timeout-minutes: 6
+        env:
+          BASIC_AUTH: ${{ secrets.STAGEDIRECTOR_BASIC_AUTH }}
+          SHOTS: ${{ github.workspace }}/.sd-screens
+        run: |
+          set -euo pipefail
+          python3 - "$STAGE" > "$RUNNER_TEMP/sd-shot-targets.json" <<'EOF'
+          import json, sys, yaml
+          cfg = yaml.safe_load(open("stagedirector.yml"))
+          stages = cfg.get("stages", [])
+          this = next((s for s in stages if s.get("id") == sys.argv[1]), {})
+          last = stages[-1] if stages else {}
+          pages = list(this.get("smokeTest") or [])
+          for c in cfg.get("checks") or []:
+              if not c.get("stages") or sys.argv[1] in c["stages"]:
+                  pages += c.get("pages") or []
+          pages = list(dict.fromkeys(pages or ["/"]))[:8]
+          out = []
+          if this.get("url"):
+              out.append({"stage": this["id"], "url": this["url"], "auth": True})
+          if last.get("url") and last.get("id") != this.get("id"):
+              out.append({"stage": last["id"], "url": last["url"], "auth": False})
+          print(json.dumps({"pages": pages, "targets": out}))
+          EOF
+          [ "$(jq '.targets | length' "$RUNNER_TEMP/sd-shot-targets.json")" -gt 0 ] || { echo "No stage urls; no screenshots."; exit 0; }
+          if ! node -e 'require("playwright")' 2>/dev/null && ! NODE_PATH="$(npm root -g)" node -e 'require("playwright")' 2>/dev/null; then
+            if [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; then
+              npm install -g --silent playwright@1.49.1 && npx -y playwright@1.49.1 install --with-deps chromium >/dev/null
+            else
+              echo "::notice::No Playwright on this runner; screenshots skipped (rebuild the Stage Director runner image)."; exit 0
+            fi
+          fi
+          mkdir -p "$SHOTS"
+          NODE_PATH="$(npm root -g)" node - "$RUNNER_TEMP/sd-shot-targets.json" <<'EOF'
+          const { chromium } = require("playwright");
+          const fs = require("fs");
+          const { pages, targets } = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const dir = process.env.SHOTS;
+          const [user, ...rest] = (process.env.BASIC_AUTH || "").split(":");
+          const sizes = { desktop: { width: 1280, height: 800 }, phone: { width: 390, height: 844 } };
+          const slug = (p) => (p.replace(/^\/|\/$/g, "").replace(/[^A-Za-z0-9]+/g, "-") || "home").slice(0, 60);
+          (async () => {
+            const browser = await chromium.launch();
+            const shots = [];
+            for (const t of targets) {
+              for (const [size, viewport] of Object.entries(sizes)) {
+                const ctx = await browser.newContext({
+                  viewport, deviceScaleFactor: 1,
+                  httpCredentials: t.auth && user ? { username: user, password: rest.join(":") } : undefined,
+                });
+                const page = await ctx.newPage();
+                for (const p of pages) {
+                  const file = `${t.stage}--${slug(p)}--${size}.jpg`;
+                  let status = 0;
+                  try {
+                    const res = await page.goto(new URL(p, t.url).toString(), { waitUntil: "networkidle", timeout: 30000 });
+                    status = res ? res.status() : 0;
+                    await page.screenshot({ path: `${dir}/${file}`, type: "jpeg", quality: 70 });
+                    shots.push({ stage: t.stage, path: p, size, file, status });
+                  } catch (e) {
+                    shots.push({ stage: t.stage, path: p, size, file: null, status, error: String(e.message || e).slice(0, 200) });
+                  }
+                }
+                await ctx.close();
+              }
+            }
+            await browser.close();
+            fs.writeFileSync(`${dir}/manifest.json`, JSON.stringify({
+              version: 1, stage: process.env.STAGE, commit: process.env.COMMIT,
+              takenAt: new Date().toISOString(), shots,
+            }, null, 1));
+            console.log(`Took ${shots.filter((s) => s.file).length} screenshots.`);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          EOF
+
+      - name: Save screenshots
+        if: success() && needs.gate.outputs.action == 'deploy' && hashFiles('.sd-screens/manifest.json') != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: stagedirector-screens-${{ needs.gate.outputs.stage }}
+          path: .sd-screens
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Note progress on this machine - finished (optional)
         # Self-hosted runners whose environment sets STAGEDIRECTOR_PROGRESS_DIR (a folder the
         # dashboard on the same machine can read) append one JSON line per step. The dashboard's
@@ -591,4 +684,5 @@ jobs:
         run: |
           [ -z "${STAGEDIRECTOR_APPROVAL:-}" ] || rm -f "$STAGEDIRECTOR_APPROVAL"
           [ -z "${SSH_AGENT_PID:-}" ] || ssh-agent -k >/dev/null 2>&1 || true
-          rm -f "$RUNNER_TEMP"/sd-*.log "$RUNNER_TEMP/sd-config.json"
+          rm -f "$RUNNER_TEMP"/sd-*.log "$RUNNER_TEMP/sd-config.json" "$RUNNER_TEMP/sd-shot-targets.json"
+          rm -rf .sd-screens
