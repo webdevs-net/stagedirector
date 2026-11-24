@@ -14,6 +14,7 @@ import { mayAnswer } from "@/lib/auth/permissions";
 import { PreviewToggle } from "@/components/PreviewToggle";
 import { RunnerBanner } from "@/components/RunnerBanner";
 import { runnerStatus } from "@/lib/data";
+import { commitLabel, wording } from "@/lib/wording";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, realRole, base, q, sp } = await loadProject(params, searchParams);
@@ -35,6 +36,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const pinnable = stages.filter((s) => s.pushers !== "none");
   const mayPin = (s: (typeof stages)[number]) => (s.pushers === "code-owners" ? isOwner : viewer.role !== "viewer");
   // Stages whose Claude requests this viewer may OK (the server checks again).
+  const w = wording(p.config);
+  const liveLabel = commitLabel(st(last.id)?.commit, st(last.id)?.version);
   const answerable = stages.filter((s) => mayAnswer(p.config, s.id, viewer.login, viewer.role).ok).map((s) => s.id);
 
   return (
@@ -55,7 +58,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         <RunnerBanner health={runnerHealth} stages={stages} />
         {p.busy && <Banner kind="busy" title={`${p.busy.by} is updating ${p.busy.stageId}`} detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${base}/updating${q}` }} />}
         {p.extras.safetyNetUndid && <Banner kind="undid" title="Safety net undid an update" detail={p.extras.safetyNetUndid} action={{ label: "Why?", href: `${base}/history${q}` }} />}
-        {liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
+        {w.siteTools && liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
         {liveRunning && <Banner kind="sync" title={`${last.name}: ${runningHeadline(liveRunning, p.config.branch)}`} detail={`${runningDetail(liveRunning)}. Putting live from here still needs the usual approval.`} />}
         {p.extras.quietHours && <Banner kind="quiet" title="Quiet hours" detail={p.extras.quietHours} />}
         {p.extras.stagingReady && middle && <Banner kind={p.waiting.length > 0 ? "pending" : "ready"} title={`${middle.name} is ready to look at`} detail={`${p.waiting.length} ${p.waiting.length === 1 ? "change" : "changes"} not on ${last.name.toLowerCase()} yet`} action={{ label: "Open", href: middle.url ?? "#" }} />}
@@ -87,6 +90,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               commit={st(middle.id)?.commit ?? null}
               deployedAt={st(middle.id)?.deployedAt ?? null}
               pinned={middlePinned}
+              version={st(middle.id)?.version ?? null}
+              openLabel={w.openMiddle(middle.name)}
             />
           </div>
           {middlePinned ? (
@@ -94,7 +99,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
               <Icon name="lock" /> {middle.name} is pinned, so it won&apos;t update. Unpin it below to update again.
             </p>
           ) : (
-            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from the ${p.config.branch} branch`} />
+            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={w.isApp ? `Build the ${middle.name.toLowerCase()} from the ${p.config.branch} branch` : `Update ${middle.name.toLowerCase()} from the ${p.config.branch} branch`} />
           )}
         </Card>
         </RunOverlay>
@@ -116,8 +121,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
             <div className="flex flex-col gap-3.5 px-5 pb-5">
               <p className="leading-relaxed text-soft">{c.summary}</p>
               <div className="flex flex-wrap gap-2.5">
-                {middle?.url && <ButtonLink href={new URL(c.pages?.[0] ?? "/", middle.url).toString()} tone="plain" className="bg-teal-soft text-teal-ink">See on {middle.name.toLowerCase()}</ButtonLink>}
-                {last.url && <ButtonLink href={new URL(c.pages?.[0] ?? "/", last.url).toString()} tone="amber">See live now</ButtonLink>}
+                {middle?.url && <ButtonLink href={new URL(c.pages?.[0] ?? "/", middle.url).toString()} tone="plain" className="bg-teal-soft text-teal-ink">{w.seeOnMiddle(middle.name)}</ButtonLink>}
+                {last.url && <ButtonLink href={w.isApp ? last.url : new URL(c.pages?.[0] ?? "/", last.url).toString()} tone="amber">{w.seeLast}</ButtonLink>}
                 <ButtonLink href={c.url} tone="plain">Full details</ButtonLink>
               </div>
             </div>
@@ -132,10 +137,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-soft text-amber"><Icon name="lock" size={22} /></span>
             <div>
               <h2 id="live-title" className="text-[21px] font-extrabold">{last.name}</h2>
-              <span className="text-[15px] text-muted">Only code owners can put changes live</span>
+              <span className="text-[15px] text-muted">{liveLabel ? `${liveLabel} · ` : ""}{w.lockNote}</span>
             </div>
           </div>
-          {last.url && <ButtonLink href={last.url} tone="amber">Open {last.name.toLowerCase()}</ButtonLink>}
+          {last.url && <ButtonLink href={last.url} tone="amber">{w.openLast(last.name)}</ButtonLink>}
         </div>
 
         <ol className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
@@ -149,7 +154,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           </li>
           <li className={`flex flex-col gap-1 rounded-[18px] px-4 py-3.5 ${approved ? "border-2 border-blue bg-blue-soft" : "bg-chip"}`}>
             <span className={`text-[13px] font-extrabold ${approved ? "text-[#1f4f94]" : "text-muted"}`}>3 · {approved ? "NOW" : "LOCKED"}</span>
-            <span className={`font-extrabold ${approved ? "" : "text-muted"}`}>Put on live</span>
+            <span className={`font-extrabold ${approved ? "" : "text-muted"}`}>{w.putLive}</span>
           </li>
         </ol>
 
@@ -157,17 +162,17 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <ButtonLink href={`${base}/review${q}`} tone="blue" className="min-h-16 text-[19px]">Review and approve</ButtonLink>
             {approved && !livePinned ? (
-              <ButtonLink href={`${base}/live${q}`} tone="blue" className="min-h-16 text-[19px]">Put on live</ButtonLink>
+              <ButtonLink href={`${base}/live${q}`} tone="blue" className="min-h-16 text-[19px]">{w.putLive}</ButtonLink>
             ) : (
               <Button disabled aria-describedby="live-lock" className="min-h-16 bg-[#e3e9f0] text-[19px] text-soft">
-                <Icon name="lock" /> Put on live
+                <Icon name="lock" /> {w.putLive}
               </Button>
             )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button tone="blue" className="min-h-16 text-[19px]">Ask a code owner</Button>
-            <Button disabled aria-describedby="live-lock" className="min-h-16 bg-[#e3e9f0] text-[19px] text-soft"><Icon name="lock" /> Put on live</Button>
+            <Button disabled aria-describedby="live-lock" className="min-h-16 bg-[#e3e9f0] text-[19px] text-soft"><Icon name="lock" /> {w.putLive}</Button>
           </div>
         )}
         <p id="live-lock" className="text-center text-[15px] text-muted">

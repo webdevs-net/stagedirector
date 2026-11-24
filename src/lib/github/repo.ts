@@ -153,6 +153,35 @@ async function behind(gh: Octokit, repo: string, base: string | null, head: stri
   return data.ahead_by;
 }
 
+/** Newest version tag (`v1.2.3`, `v2.0.0-beta.1`) per commit. Asked for app projects only; kept 5 min. */
+const tagsMemo = new Map<string, { at: number; byCommit: Map<string, string> }>();
+export async function versionTags(gh: Octokit, repo: string, now = Date.now()): Promise<Map<string, string>> {
+  const hit = tagsMemo.get(repo);
+  if (hit && now - hit.at < 5 * 60_000) return hit.byCommit;
+  const { data } = await gh.rest.repos.listTags({ ...splitRepo(repo), per_page: 100 });
+  const byCommit = versionsByCommit(data.map((t) => ({ name: t.name, sha: t.commit.sha })));
+  tagsMemo.set(repo, { at: now, byCommit });
+  return byCommit;
+}
+
+/** Map commit -> highest `v*` version tag on it (a release beats its own pre-release). */
+export function versionsByCommit(tags: { name: string; sha: string }[]): Map<string, string> {
+  const parse = (n: string) => /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?$/.exec(n);
+  const newer = (a: string, b: string) => {
+    const x = parse(a)!, y = parse(b)!;
+    for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) > Number(y[i]);
+    if (!x[4] !== !y[4]) return !x[4]; // 1.4.0 is newer than 1.4.0-beta.1
+    return (x[4] ?? "") > (y[4] ?? "");
+  };
+  const out = new Map<string, string>();
+  for (const t of tags) {
+    if (!parse(t.name)) continue;
+    const had = out.get(t.sha);
+    if (!had || newer(t.name, had)) out.set(t.sha, t.name);
+  }
+  return out;
+}
+
 /** Status of every stage. Stages with nothing deployed (e.g. local) have commit null. */
 export async function stageStatuses(
   gh: Octokit,
@@ -162,6 +191,7 @@ export async function stageStatuses(
 ): Promise<StageStatus[]> {
   const lg = await localGit(gh, repo);
   const head = (lg ? await lg.head(config.branch) : null) ?? (await defaultBranchHead(gh, repo, config.branch).catch(() => null));
+  const tags = config.type === "app" ? await versionTags(gh, repo).catch(() => null) : null;
   const [deployed, observed] = await Promise.all([
     Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestSuccessfulDeployment(gh, repo, s.id)))),
     Promise.all(config.stages.map((s) => (s.pushers === "none" ? Promise.resolve(null) : latestObserved(gh, repo, s.id).catch(() => null)))),
@@ -192,6 +222,7 @@ export async function stageStatuses(
         behindBy: d ? await behind(gh, repo, d.commit, prev, lg).catch(() => 0) : 0,
         outOfSync: d?.outOfSync ?? [],
         pinned: s.pushers === "none" ? false : await pinned(s.id),
+        ...(tags ? { version: d ? tags.get(d.commit) ?? null : null } : {}),
         running,
       };
     }),

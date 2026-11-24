@@ -8,6 +8,7 @@ import { StageBars } from "./StageBars";
 import { Chevron, Icon } from "./ui";
 import { HEALTH_LABEL, healthOf, timeAgo } from "./status";
 import { useRuns } from "./runs/RunsProvider";
+import { wording } from "@/lib/wording";
 
 function RunningLabel({ stage }: { stage: string }) {
   return (
@@ -145,7 +146,7 @@ export function ProjectBrowser({ projects }: { projects: ProjectView[] }) {
                       <Link href={`/p/${repoToSlug(p.repo)}`} className="flex min-h-14 flex-wrap items-center gap-3.5 border-t border-chip px-3 py-2">
                         <span className="min-w-0 flex-1">
                           <span className="block text-base font-bold">{p.config.name}</span>
-                          <span className="block text-sm text-muted">Live updated {timeAgo(live?.deployedAt ?? null)}</span>
+                          <span className="block text-sm text-muted">{wording(p.config).lastUpdated} {timeAgo(live?.deployedAt ?? null)}{live?.version ? ` · ${live.version}` : ""}</span>
                         </span>
                         <StageBars p={p} small />
                         <span className="w-[150px]">

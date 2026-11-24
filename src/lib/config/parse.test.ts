@@ -53,4 +53,20 @@ describe("parseConfig", () => {
     );
     expect(r.ok).toBe(false);
   });
+
+  it("parses the Loquio app example (type app, no host, longer runs)", () => {
+    const cfg = parseConfig(readFileSync(join(process.cwd(), "examples/loquio.stagedirector.yml"), "utf8"));
+    expect(cfg.type).toBe("app");
+    expect(cfg.host).toBe("none");
+    expect(cfg.timeoutMinutes).toBe(180);
+    expect(cfg.stages.map((s) => s.name)).toEqual(["Loquio Dev", "Beta", "Released"]);
+  });
+
+  it("refuses an unknown host, type or a timeout over 6 hours", () => {
+    const base = `version: 1\nname: X\nstages:\n  - {id: local, name: Local, pushers: none, trigger: manual}\n`;
+    expect(safeParseConfig(base + "host: ovh1\n").ok).toBe(false);
+    expect(safeParseConfig(base + "type: game\n").ok).toBe(false);
+    expect(safeParseConfig(base + "timeoutMinutes: 400\n").ok).toBe(false);
+    expect(safeParseConfig(base + "timeoutMinutes: 360\n").ok).toBe(true);
+  });
 });

@@ -6,6 +6,7 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 
 ## Unreleased
 
+- Apps on the dashboard (first: Loquio desktop). In `stagedirector.yml`: `type: app` changes the words ("Release to users", "Download the beta", "Released") and hides the website-only tools (out of sync, Save a backup, Copy live to staging, site watch); `host: none` skips the SSH key and Tailscale steps, so a stage that publishes a GitHub Release needs no host secrets; `timeoutMinutes` (up to 360) lets a deploy that builds an app run longer than 45 minutes. The version tag (`v1.4.0`) shows next to the short commit on stage cards and the home list. The workflow token now has `actions: write`, so a deploy command can start and follow the project's own release workflow.
 - Review page: real before/after screenshots. Deploys photograph the stage's pages and live's (desktop and phone) as a run artifact; the dashboard shows them side by side. Runner image includes Chromium (`WITH_BROWSER=false` to leave out).
 - Logo: director's chair with a star (docs/brand/stage-director-logo.svg) and star-tile icon; brand section in CLAUDE.md; favicon, home header and README now use it
 - The repo moved to `webdevs-net/stagedirector`; links updated.
