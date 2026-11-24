@@ -6,6 +6,7 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 
 ## Unreleased
 
+- Review page: real before/after screenshots. Deploys photograph the stage's pages and live's (desktop and phone) as a run artifact; the dashboard shows them side by side. Runner image includes Chromium (`WITH_BROWSER=false` to leave out).
 - Logo: director's chair with a star (docs/brand/stage-director-logo.svg) and star-tile icon; brand section in CLAUDE.md; favicon, home header and README now use it
 - The repo moved to `webdevs-net/stagedirector`; links updated.
 

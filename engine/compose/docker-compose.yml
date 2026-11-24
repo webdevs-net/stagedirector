@@ -21,6 +21,7 @@ services:
         RUNNER_VERSION: ${RUNNER_VERSION:-2.338.2}
         WRANGLER_VERSION: ${WRANGLER_VERSION:-3.99.0}
         APT_MIRROR: ${APT_MIRROR:-}
+        WITH_BROWSER: ${WITH_BROWSER:-true}
     image: stagedirector-runner:${RUNNER_VERSION:-2.338.2}
     restart: unless-stopped
     # Healthy while the runner's listener process is alive. Docker only marks it unhealthy;
