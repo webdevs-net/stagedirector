@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { ActiveRun } from "@/lib/data";
 import { repoToSlug } from "@/lib/shared";
 import { Icon } from "../ui";
+import { waitingText } from "./waiting";
 import { useRuns } from "./RunsProvider";
 
 const VERB: Record<ActiveRun["kind"], string> = { update: "Updating", "put-live": "Putting live:", undo: "Undoing on", "clear-cache": "Clearing cache on", snapshot: "Backing up" };
@@ -82,7 +83,7 @@ export function RunWindow() {
             </div>
             {!done && (
               <>
-                {r.waitingForRunner && <p role="status" className="rounded-xl bg-amber-soft px-3 py-2 font-bold">Waiting for a runner — none is online for {r.waitingForRunner}. Stop it, or it starts by itself once the runner is back.</p>}
+                {r.waitingForRunner && <p role="status" className="rounded-xl bg-amber-soft px-3 py-2 font-bold">{waitingText(r.waitingForRunner, r.startedAt)}. Stop it, or it starts by itself once the runner is back.</p>}
                 <p aria-live="polite" className="font-bold">{r.steps[r.step]} <span className="font-normal text-muted">· {elapsed(r, now)}</span></p>
                 <div role="progressbar" aria-label="Progress" aria-valuenow={r.progress} aria-valuemin={0} aria-valuemax={100} className="h-3 overflow-hidden rounded-full bg-[#e3e9f0]">
                   <div className="h-full rounded-full bg-blue transition-[width] duration-700" style={{ width: `${r.progress}%` }} />

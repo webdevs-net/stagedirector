@@ -9,6 +9,8 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 - Review page: real before/after screenshots. Deploys photograph the stage's pages and live's (desktop and phone) as a run artifact; the dashboard shows them side by side. Runner image includes Chromium (`WITH_BROWSER=false` to leave out).
 - Logo: director's chair with a star (docs/brand/stage-director-logo.svg) and star-tile icon; brand section in CLAUDE.md; favicon, home header and README now use it
 - The repo moved to `webdevs-net/stagedirector`; links updated.
+- Workflow: an automatic (push) deploy that waited for a runner now checks, once it starts, that its commit is still the head of the branch. If newer commits landed meanwhile it stops without failing, so an old commit can no longer overwrite staging. Deploys started from the dashboard are unchanged.
+- Dashboard: a run stuck in the queue says how long it has waited ("Waiting for a runner 12 min"), and the project page says when no runner at all has a stage's label.
 
 ## 0.5.0 (2026-11-19)
 
