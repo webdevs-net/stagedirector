@@ -109,7 +109,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         <h2 id="changes-title" className="text-xl font-extrabold">
           On {middle?.name.toLowerCase() ?? first.name.toLowerCase()}, not on {last.name.toLowerCase()} yet <span className="text-base font-bold text-muted">· {n} {n === 1 ? "change" : "changes"}{liveUnknown ? ` · ${last.name.toLowerCase()} not checked` : ""}</span>
         </h2>
-        {liveUnknown && <p className="rounded-[22px] bg-amber-soft p-6 text-soft">Stage Director has never deployed or checked {last.name.toLowerCase()}, so it cannot tell exactly what is new there. Below are {middle?.name.toLowerCase() ?? "main"}&apos;s latest changes; putting {last.name.toLowerCase()} live sends everything on {middle?.name.toLowerCase() ?? "main"}.</p>}
+        {liveUnknown && <p className="rounded-[22px] bg-amber-soft p-6 text-soft">Stage Director has never deployed or checked {last.name.toLowerCase()}, so it cannot tell exactly what is new there. Below are {middle?.name.toLowerCase() ?? "main"}&apos;s latest changes; {w.isApp ? `releasing to users sends the ${middle?.name.toLowerCase() ?? "main"} version` : `putting ${last.name.toLowerCase()} live sends everything on ${middle?.name.toLowerCase() ?? "main"}`}.</p>}
         {!liveUnknown && n === 0 && <p className="rounded-[22px] bg-white p-6 text-muted">Nothing waiting. {last.name} matches {middle?.name.toLowerCase() ?? "main"}.</p>}
         {p.waiting.map((c, i) => (
           <details key={c.pr || c.commit} open={i === 0} className="rounded-[22px] bg-white shadow-[0_4px_18px_rgba(30,43,58,.06)]">
@@ -177,12 +177,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
         )}
         <p id="live-lock" className="text-center text-[15px] text-muted">
           {livePinned
-            ? `${last.name} is pinned. Unpin it below before putting changes live.`
+            ? `${last.name} is pinned. Unpin it below before ${w.isApp ? "releasing" : "putting changes live"}.`
             : approved
-            ? `Approved by ${p.extras.approval?.by}. Ready to put live.`
+            ? `Approved by ${p.extras.approval?.by}. Ready to ${w.isApp ? "release" : "put live"}.`
             : isOwner
               ? `Unlocks once a code owner approves ${n === 1 ? "this change" : `these ${n} changes`}.`
-              : "Only code owners can approve and put changes live. Ask one to review."}
+              : w.isApp ? "Only code owners can approve and release to users. Ask one to review." : "Only code owners can approve and put changes live. Ask one to review."}
         </p>
         {realRole === "code-owner" && <PreviewToggle base={base} sp={sp} current={isOwner ? "code-owner" : "developer"} />}
       </section>
