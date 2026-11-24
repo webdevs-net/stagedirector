@@ -171,13 +171,21 @@ export async function stopRun(runId: string): Promise<string | null> {
   return res.ok ? null : res.error;
 }
 
-export async function startRun(repo: string, stageId: string, kind: mock.RunKind): Promise<mock.ActiveRun | { error: string }> {
+/** App projects: release tags the beta can be built from, newest first (none in sample mode). */
+export async function releaseCandidates(repo: string, branch: string): Promise<{ tag: string; commit: string }[]> {
+  if (!live()) return [];
+  return swr(`release-candidates:${repo}`, 60_000, () => gh.getReleaseCandidates(repo, branch)).catch(() => []);
+}
+
+/** `commit`: build this exact commit (an app's chosen release tag); default: what the stage before holds, or the branch head. */
+export async function startRun(repo: string, stageId: string, kind: mock.RunKind, commit?: string): Promise<mock.ActiveRun | { error: string }> {
   if (!live()) return mock.startRun(repo, stageId, kind);
+  if (commit !== undefined && !/^[0-9a-f]{40}$/.test(commit)) return { error: "That is not a commit id" };
   const login = await gh.currentLogin();
   if (!login) return { error: "Sign in with GitHub first" };
   if ((await runs.activeRuns()).some((r) => r.repo === repo && r.state === "running")) return { error: "Something is already running here" };
   const action = kind === "undo" ? "rollback" : kind === "clear-cache" ? "clear-cache" : kind === "snapshot" ? "snapshot" : "deploy";
-  const r = await gh.performAction(login, { repo, stageId, action });
+  const r = await gh.performAction(login, { repo, stageId, action, ...(commit && action === "deploy" ? { commit } : {}) });
   if (!r.ok) return { error: r.error };
   if (r.recordedAs === "request") return { error: "Saved as a request; a person needs to OK it" };
   return runs.notePending(repo, stageId, kind);

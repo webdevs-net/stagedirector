@@ -70,6 +70,9 @@ permissions:
   contents: write # pin refs (refs/stagedirector/pins/<stage>), git fetch
   deployments: write # GitHub Deployments + statuses
   statuses: read # approval records
+  # read for websites. An app project (type: app) whose deploy starts and follows its own
+  # release workflow (`gh workflow run`) changes this one line to `actions: write` in its copy;
+  # no other project needs it, so the token of a website's run cannot start or cancel workflows.
   actions: read
 
 # One push at a time per project. A newer run waits; GitHub keeps only the newest
@@ -93,6 +96,8 @@ jobs:
       stage_json: ${{ steps.gate.outputs.stage_json }}
       tools_json: ${{ steps.gate.outputs.tools_json }}
       no_downtime: ${{ steps.gate.outputs.no_downtime }}
+      host: ${{ steps.gate.outputs.host }}
+      timeout_minutes: ${{ steps.gate.outputs.timeout_minutes }}
       is_last: ${{ steps.gate.outputs.is_last }}
       commit: ${{ steps.gate.outputs.commit }}
       action: ${{ steps.gate.outputs.action }}
@@ -277,6 +282,14 @@ jobs:
           out stage_json "$S"
           out tools_json "$(jq -c '.tools // {}' "$CFG")"
           out no_downtime "$(jq -r 'if .noDowntime == true then 1 else 0 end' "$CFG")"
+          # host: none = the commands reach no host (e.g. they publish a GitHub Release): no SSH key, no tailnet.
+          HOST="$(jq -r '.host // "ssh"' "$CFG")"
+          case "$HOST" in none|ssh) ;; *) fail "stagedirector.yml: host must be none (or left out)." ;; esac
+          out host "$HOST"
+          # timeoutMinutes: how long the deploy job may run (default 45, at most 360, GitHub's limit).
+          TIMEOUT="$(jq -r '.timeoutMinutes // 45' "$CFG")"
+          [[ "$TIMEOUT" =~ ^[0-9]+$ ]] && [ "$TIMEOUT" -ge 5 ] && [ "$TIMEOUT" -le 360 ] || fail "stagedirector.yml: timeoutMinutes must be a whole number from 5 to 360."
+          out timeout_minutes "$TIMEOUT"
           out is_last "$IS_LAST"
           out commit "$COMMIT"
           out action "$ACTION"
@@ -303,7 +316,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.gate.outputs.runs_on) }}
     environment:
       name: ${{ needs.gate.outputs.environment }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ fromJSON(needs.gate.outputs.timeout_minutes || '45') }}
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -347,7 +360,7 @@ jobs:
           fetch-depth: 0
 
       - name: Join the tailnet (only when the environment has Tailscale secrets)
-        if: env.TS_OAUTH_CLIENT_ID != ''
+        if: env.TS_OAUTH_CLIENT_ID != '' && needs.gate.outputs.host != 'none'
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -355,7 +368,7 @@ jobs:
           tags: tag:ci
 
       - name: Pin host keys (environment variable STAGEDIRECTOR_KNOWN_HOSTS)
-        if: vars.STAGEDIRECTOR_KNOWN_HOSTS != ''
+        if: vars.STAGEDIRECTOR_KNOWN_HOSTS != '' && needs.gate.outputs.host != 'none'
         env:
           KNOWN_HOSTS: ${{ vars.STAGEDIRECTOR_KNOWN_HOSTS }}
         run: |
@@ -364,6 +377,8 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Load host SSH key (environment secret)
+        # host: none (e.g. an app released on GitHub) reaches no host, so it needs no key.
+        if: needs.gate.outputs.host != 'none'
         env:
           SSH_KEY: ${{ secrets.STAGEDIRECTOR_SSH_KEY }}
           RUNNER_LABEL: ${{ needs.gate.outputs.runner }}
@@ -382,6 +397,9 @@ jobs:
 
       - name: Write approval file
         if: needs.gate.outputs.gated == 'true' && (needs.gate.outputs.action == 'deploy' || needs.gate.outputs.action == 'rollback')
+        env:
+          # The file stays valid while the job may run, so a Safety-net rollback at the end of a long deploy still has it.
+          TIMEOUT_MINUTES: ${{ needs.gate.outputs.timeout_minutes }}
         run: |
           set -euo pipefail
           F="$RUNNER_TEMP/stagedirector-approval.json"
@@ -392,7 +410,7 @@ jobs:
             --arg repo "$REPO" --arg stage "$STAGE" --arg commit "$COMMIT" --arg action "$ACTION" \
             --arg by "$BY" --arg at "$AT" --arg actor "$ACTOR" --arg req "$REQUESTED_BY" \
             --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --arg exp "$(date -u -d '+45 minutes' +%FT%TZ)" \
+            --arg exp "$(date -u -d "+$(( ${TIMEOUT_MINUTES:-45} + 15 )) minutes" +%FT%TZ)" \
             '{version: 1, repo: $repo, stageId: $stage, commit: $commit, action: $action,
               by: $by, at: $at, actor: $actor, requestedBy: $req, runUrl: $run, expiresAt: $exp}' > "$F"
           echo "STAGEDIRECTOR_APPROVAL=$F" >> "$GITHUB_ENV"

@@ -38,6 +38,14 @@ export interface ProjectConfig {
   checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
   gateRunner?: "github" | "self-hosted"; // where the "Check rules" job runs; self-hosted = runner labelled sd-gate
+  /** "site" (default) = a website on a host. "app" = a program people download: app wording,
+   *  no out-of-sync or backup tools, and the version tag shown next to each stage's commit. */
+  type?: "site" | "app";
+  /** "none" = the deploy commands reach no host (e.g. they publish a GitHub Release), so the
+   *  workflow loads no SSH key and joins no tailnet. Default: a host reached over SSH. */
+  host?: "none";
+  /** Minutes the deploy job may run (default 45, at most 360). For deploys that build an app. */
+  timeoutMinutes?: number;
 }
 
 /** One check the dashboard runs against a stage (before approving, and after each run). */
@@ -67,6 +75,8 @@ export interface StageStatus {
   behindBy: number;           // commits behind the previous stage
   outOfSync: string[];        // files changed on the server outside git
   pinned: boolean;
+  /** Version tag on `commit` (e.g. "v1.4.0"), for `type: app` projects; null when the commit has no v* tag. */
+  version?: string | null;
   /**
    * What the server actually runs, when that differs from `commit` (Stage Director's own
    * record): e.g. a deploy made from a terminal. Display only — never used to allow a push;

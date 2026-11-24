@@ -1,0 +1,34 @@
+# A desktop app released through GitHub Releases (Loquio). No host: the deploy
+# commands start the project's own release workflow and follow it, so the
+# workflow loads no SSH key, and the deploy job may run for up to 5 hours.
+version: 1
+name: Loquio
+group: Loquio
+kind: Desktop app · GitHub Releases
+type: app
+host: none
+timeoutMinutes: 300
+branch: main
+stages:
+  - id: local
+    name: Loquio Dev
+    pushers: none
+    trigger: manual
+  - id: beta
+    name: Beta
+    url: https://github.com/webdevs-net/loquio/releases
+    pushers: developers
+    trigger: manual
+    deploy: scripts/stagedirector.sh deploy beta
+    rollback: scripts/stagedirector.sh rollback beta {backup}
+    status: scripts/stagedirector.sh status --json
+    runner: github
+  - id: live
+    name: Released
+    url: https://github.com/webdevs-net/loquio/releases/latest
+    pushers: code-owners
+    trigger: manual
+    deploy: scripts/stagedirector.sh deploy live
+    rollback: scripts/stagedirector.sh rollback live {backup}
+    status: scripts/stagedirector.sh status --json
+    runner: github

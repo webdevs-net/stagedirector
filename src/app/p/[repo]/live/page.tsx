@@ -3,6 +3,7 @@ import { ActionButton } from "@/components/ActionButton";
 import { loadProject, type PageProps } from "@/components/load";
 import { Chevron, Icon } from "@/components/ui";
 import { dataIsLive } from "@/lib/data";
+import { commitLabel, wording } from "@/lib/wording";
 
 export default async function PutLivePage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
@@ -12,6 +13,9 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
   // In demo mode ?approved=1 stands in for the stored approval; with GitHub only a real approval counts.
   const approval = p.extras.approval ?? (sp.approved === "1" && viewer.role === "code-owner" && !(await dataIsLive()) ? { by: viewer.name, at: "just now" } : null);
   const sync = p.stages[p.stages.length - 1]?.outOfSync ?? [];
+  const w = wording(p.config);
+  const middle = p.config.stages.length > 2 ? p.config.stages[p.config.stages.length - 2] : null;
+  const version = commitLabel(p.stages.find((s) => s.stageId === middle?.id)?.commit, p.stages.find((s) => s.stageId === middle?.id)?.version);
   const canPush = viewer.role === "code-owner" && !!approval;
 
   return (
@@ -19,8 +23,17 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
       <div role="dialog" aria-modal="true" aria-labelledby="dlg-title" className="flex w-full max-w-[580px] flex-col gap-5 rounded-[32px] bg-white p-6 shadow-[0_30px_80px_rgba(30,43,58,.3)] sm:p-9">
         <div className="flex flex-col items-center gap-2.5 text-center">
           <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-blue-soft text-blue"><Icon name="globe" size={34} /></div>
-          <h1 id="dlg-title" className="text-[28px] font-extrabold leading-tight">Put {n} {n === 1 ? "change" : "changes"} on the {last.name.toLowerCase()}?</h1>
-          <p className="max-w-[420px] text-[17px] text-muted">Visitors to {host} will see them right away. A backup is saved first, so you can undo with one click.</p>
+          {w.isApp ? (
+            <>
+              <h1 id="dlg-title" className="text-[28px] font-extrabold leading-tight">Release {version ?? `${n} ${n === 1 ? "change" : "changes"}`} to users?</h1>
+              <p className="max-w-[420px] text-[17px] text-muted">The {middle?.name.toLowerCase() ?? "beta"} you tried becomes the release: new downloads get it, and installed apps are offered it at their next update check. Nothing is rebuilt. Undo puts the previous release back for new downloads; apps that already updated keep the new version.</p>
+            </>
+          ) : (
+            <>
+              <h1 id="dlg-title" className="text-[28px] font-extrabold leading-tight">Put {n} {n === 1 ? "change" : "changes"} on the {last.name.toLowerCase()}?</h1>
+              <p className="max-w-[420px] text-[17px] text-muted">Visitors to {host} will see them right away. A backup is saved first, so you can undo with one click.</p>
+            </>
+          )}
         </div>
 
         <ul className="flex flex-col gap-2 rounded-[20px] bg-bg px-5 py-4 text-[17px]">
@@ -29,7 +42,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
           ))}
         </ul>
 
-        {sync.length > 0 && (
+        {w.siteTools && sync.length > 0 && (
           <details className="rounded-[20px] bg-amber-soft">
             <summary className="flex min-h-14 items-center justify-between gap-2 px-5 font-bold text-amber">
               <span>{sync.length} file was edited on the live server</span><Chevron />
@@ -50,7 +63,7 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal text-white"><Icon name="check" size={18} /></span>
             <span className="flex flex-col">
               <span className="font-extrabold">Approved by {approval.by} · code owner</span>
-              <span className="text-[15px] text-teal-ink">{approval.at} · these exact {n} changes, checked on staging</span>
+              <span className="text-[15px] text-teal-ink">{approval.at} · these exact {n} changes, checked on {middle?.name.toLowerCase() ?? "staging"}</span>
             </span>
           </div>
         ) : (
@@ -59,16 +72,16 @@ export default async function PutLivePage({ params, searchParams }: PageProps) {
           </div>
         )}
 
-        <p className={`rounded-[18px] px-4 py-3 text-[15px] ${p.config.noDowntime ? "bg-teal-soft text-teal-ink" : "bg-chip text-soft"}`}>
+        {!w.isApp && <p className={`rounded-[18px] px-4 py-3 text-[15px] ${p.config.noDowntime ? "bg-teal-soft text-teal-ink" : "bg-chip text-soft"}`}>
           {p.config.noDowntime
             ? "No-downtime switch: the new version is prepared next to the old one, then swapped in one step. Visitors never see a half-updated site, and Undo takes seconds."
             : "Normal update: files are copied over the running site, so it can be slow for a moment. Undo restores the backup."}
-        </p>
+        </p>}
 
         <div className="flex flex-col gap-2.5">
           {canPush ? (
             <ActionButton act="run" repo={p.repo} stageId={last.id} kind="put-live" next={`${base}${q}`} className="min-h-[72px] rounded-[22px] bg-blue text-[21px] text-white shadow-[0_8px_20px_rgba(37,99,184,.3)]">
-              Yes, put it live
+              {w.confirmPutLive}
             </ActionButton>
           ) : (
             <Link href={`${base}/review${q}`} className="flex min-h-[72px] items-center justify-center rounded-[22px] bg-blue text-[21px] font-extrabold text-white">
