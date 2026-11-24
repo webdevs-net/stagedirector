@@ -1,13 +1,13 @@
 # A desktop app released through GitHub Releases (Loquio). No host: the deploy
 # commands start the project's own release workflow and follow it, so the
-# workflow loads no SSH key, and the deploy job may run for up to 3 hours.
+# workflow loads no SSH key, and the deploy job may run for up to 5 hours.
 version: 1
 name: Loquio
 group: Loquio
 kind: Desktop app · GitHub Releases
 type: app
 host: none
-timeoutMinutes: 180
+timeoutMinutes: 300
 branch: main
 stages:
   - id: local

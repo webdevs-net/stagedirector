@@ -25,8 +25,10 @@ The dashboard never runs these commands and never talks to a host. It starts a
 
 There is no terminal (stdin is not a TTY). A command must never wait for input.
 
-`GH_TOKEN` is the run's own token (`contents: write`, `deployments: write`, `actions: write`). With
-`actions: write` a deploy command may start the project's own workflow and follow it
+`GH_TOKEN` is the run's own token (`contents: write`, `deployments: write`, `actions: read`). An app
+project whose deploy starts its own release workflow sets `actions: write` in its copy of the workflow
+(one line, marked there); websites keep `read`. With that, a deploy command may start the project's
+own workflow and follow it
 (`gh workflow run release.yml …` then `gh run watch <id> --exit-status`). A run started with this token
 is attributed to `github-actions[bot]`, so the started workflow must not trust its actor: check the
 approval record itself if it releases anything (Loquio's `release-check.sh` does).
@@ -251,6 +253,24 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
 8. Branch protection on the default branch, with CODEOWNERS review required for
    `CODEOWNERS`, `stagedirector.yml` and `.github/workflows/`, is what makes 1–7 hold.
    Set it up.
+
+### Known limit: tools signed in as a code owner
+
+The approval check trusts GitHub's record of **who created** the commit status. It cannot tell a
+person pressing Approve from any program using that person's GitHub sign-in: `gh` on their computer,
+a script, or an AI session running `gh` as them. Such a tool can create
+`stagedirector/approval/<stage>` itself and then start the run, and every check passes. The
+`claude:` description check only stops sessions that say who they are.
+
+What closes it (the owner chooses):
+- **Separate sign-in for agents**: AI sessions and scripts use a fine-grained token (or a separate
+  account) **without** "Commit statuses: write" and "Actions: write" on project repos. Then only the
+  person, through the dashboard, can approve or start a run.
+- **A local guard**: a Claude Code `PreToolUse` hook that refuses commands which create an approval
+  status, start a live release or run a live deploy (Loquio has one as a proposal:
+  `docs/proposals/stagedirector-approval-guard.py`). Cheap, but only covers Claude Code's shell.
+- **Required reviewers** on `stagedirector-live`: not available for private repos below Enterprise,
+  and a review can also be submitted through the API with the same sign-in, so not enough alone.
 
 ## Records the dashboard reads
 

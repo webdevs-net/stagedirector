@@ -70,9 +70,10 @@ permissions:
   contents: write # pin refs (refs/stagedirector/pins/<stage>), git fetch
   deployments: write # GitHub Deployments + statuses
   statuses: read # approval records
-  # write: a deploy command may start and follow the project's own workflow (e.g. an app's
-  # release build that takes longer than this job should hold a slot), with `gh workflow run`.
-  actions: write
+  # read for websites. An app project (type: app) whose deploy starts and follows its own
+  # release workflow (`gh workflow run`) changes this one line to `actions: write` in its copy;
+  # no other project needs it, so the token of a website's run cannot start or cancel workflows.
+  actions: read
 
 # One push at a time per project. A newer run waits; GitHub keeps only the newest
 # pending run per group, so a third run while one runs and one waits replaces the waiting one.

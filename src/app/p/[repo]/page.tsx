@@ -13,7 +13,8 @@ import { RequestsCard } from "@/components/RequestsCard";
 import { mayAnswer } from "@/lib/auth/permissions";
 import { PreviewToggle } from "@/components/PreviewToggle";
 import { RunnerBanner } from "@/components/RunnerBanner";
-import { runnerStatus } from "@/lib/data";
+import { releaseCandidates, runnerStatus } from "@/lib/data";
+import { BuildFromTag } from "@/components/BuildFromTag";
 import { commitLabel, wording } from "@/lib/wording";
 
 export default async function ProjectPage({ params, searchParams }: PageProps) {
@@ -28,7 +29,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const n = p.waiting.length;
   const liveUnknown = p.lastKnown === null; // never deployed or checked by Stage Director: no comparison with live
   const liveSync = st(last.id)?.outOfSync ?? [];
-  const [local, runnerHealth] = await Promise.all([readLocalWork(p.repo, p.config.branch), runnerStatus([p])]);
+  const [local, runnerHealth, tags] = await Promise.all([
+    readLocalWork(p.repo, p.config.branch),
+    runnerStatus([p]),
+    p.config.type === "app" ? releaseCandidates(p.repo, p.config.branch) : Promise.resolve([]),
+  ]);
   const midRunning = middle ? st(middle.id)?.running ?? null : null;
   const liveRunning = st(last.id)?.running ?? null;
   const middlePinned = !!middle && !!st(middle.id)?.pinned;
@@ -98,8 +103,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
             <p className="flex min-h-[72px] items-center justify-center gap-2 rounded-[22px] bg-amber-soft px-5 text-center text-lg font-extrabold text-[#7a4800]">
               <Icon name="lock" /> {middle.name} is pinned, so it won&apos;t update. Unpin it below to update again.
             </p>
+          ) : w.isApp ? (
+            <BuildFromTag repo={p.repo} stageId={middle.id} stageName={middle.name} tags={tags} current={st(middle.id)?.commit ?? null} />
           ) : (
-            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={w.isApp ? `Build the ${middle.name.toLowerCase()} from the ${p.config.branch} branch` : `Update ${middle.name.toLowerCase()} from the ${p.config.branch} branch`} />
+            <UpdateStagingButton repo={p.repo} stageId={middle.id} label={`Update ${middle.name.toLowerCase()} from the ${p.config.branch} branch`} />
           )}
         </Card>
         </RunOverlay>

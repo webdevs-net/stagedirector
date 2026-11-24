@@ -154,30 +154,65 @@ async function behind(gh: Octokit, repo: string, base: string | null, head: stri
 }
 
 /** Newest version tag (`v1.2.3`, `v2.0.0-beta.1`) per commit. Asked for app projects only; kept 5 min. */
-const tagsMemo = new Map<string, { at: number; byCommit: Map<string, string> }>();
+const tagsMemo = new Map<string, { at: number; byCommit: Map<string, string>; tags: { name: string; sha: string }[] }>();
 export async function versionTags(gh: Octokit, repo: string, now = Date.now()): Promise<Map<string, string>> {
   const hit = tagsMemo.get(repo);
   if (hit && now - hit.at < 5 * 60_000) return hit.byCommit;
-  const { data } = await gh.rest.repos.listTags({ ...splitRepo(repo), per_page: 100 });
-  const byCommit = versionsByCommit(data.map((t) => ({ name: t.name, sha: t.commit.sha })));
-  tagsMemo.set(repo, { at: now, byCommit });
+  const tags = await allTags(gh, repo);
+  const byCommit = versionsByCommit(tags);
+  tagsMemo.set(repo, { at: now, byCommit, tags });
   return byCommit;
+}
+
+/** Every tag (GitHub lists them by name, not date, so read all pages; at most 1,000). */
+async function allTags(gh: Octokit, repo: string): Promise<{ name: string; sha: string }[]> {
+  const out: { name: string; sha: string }[] = [];
+  for await (const page of gh.paginate.iterator(gh.rest.repos.listTags, { ...splitRepo(repo), per_page: 100 })) {
+    for (const t of page.data) out.push({ name: t.name, sha: t.commit.sha });
+    if (out.length >= 1000) break;
+  }
+  return out;
+}
+
+/** Release tags an app's first stage can be built from: the newest `v*` tags (not `-dev`) on the branch. */
+export interface ReleaseCandidate { tag: string; commit: string }
+export async function releaseCandidates(gh: Octokit, repo: string, branch: string, limit = 5): Promise<ReleaseCandidate[]> {
+  await versionTags(gh, repo);
+  const tags = tagsMemo.get(repo)?.tags ?? [];
+  const newestFirst = sortVersionsDesc(tags.filter((t) => isVersionTag(t.name) && !t.name.endsWith("-dev")));
+  const out: ReleaseCandidate[] = [];
+  for (const t of newestFirst.slice(0, limit * 2)) {
+    // On the branch = the branch is identical to or ahead of the tag.
+    const onBranch = await gh.rest.repos
+      .compareCommitsWithBasehead({ ...splitRepo(repo), basehead: `${t.sha}...${branch}`, per_page: 1 })
+      .then((r) => r.data.status === "identical" || r.data.status === "ahead")
+      .catch(() => false);
+    if (onBranch) out.push({ tag: t.name, commit: t.sha });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+const VERSION_RE = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?$/;
+function isVersionTag(n: string) { return VERSION_RE.test(n); }
+/** a newer than b? (1.10.0 > 1.9.9; 1.4.0 > 1.4.0-beta.1) */
+function newerVersion(a: string, b: string): boolean {
+  const x = VERSION_RE.exec(a)!, y = VERSION_RE.exec(b)!;
+  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) > Number(y[i]);
+  if (!x[4] !== !y[4]) return !x[4];
+  return (x[4] ?? "") > (y[4] ?? "");
+}
+export function sortVersionsDesc<T extends { name: string }>(tags: T[]): T[] {
+  return [...tags].sort((a, b) => (a.name === b.name ? 0 : newerVersion(a.name, b.name) ? -1 : 1));
 }
 
 /** Map commit -> highest `v*` version tag on it (a release beats its own pre-release). */
 export function versionsByCommit(tags: { name: string; sha: string }[]): Map<string, string> {
-  const parse = (n: string) => /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?$/.exec(n);
-  const newer = (a: string, b: string) => {
-    const x = parse(a)!, y = parse(b)!;
-    for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) > Number(y[i]);
-    if (!x[4] !== !y[4]) return !x[4]; // 1.4.0 is newer than 1.4.0-beta.1
-    return (x[4] ?? "") > (y[4] ?? "");
-  };
   const out = new Map<string, string>();
   for (const t of tags) {
-    if (!parse(t.name)) continue;
+    if (!isVersionTag(t.name)) continue;
     const had = out.get(t.sha);
-    if (!had || newer(t.name, had)) out.set(t.sha, t.name);
+    if (!had || newerVersion(t.name, had)) out.set(t.sha, t.name);
   }
   return out;
 }

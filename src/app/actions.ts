@@ -6,8 +6,8 @@
 // will replace with GitHub workflow runs.
 import * as data from "@/lib/data";
 
-export async function startRunAction(repo: string, stageId: string, kind: data.RunKind) {
-  return data.startRun(repo, stageId, kind);
+export async function startRunAction(repo: string, stageId: string, kind: data.RunKind, commit?: string) {
+  return data.startRun(repo, stageId, kind, commit);
 }
 
 export async function listRunsAction() {

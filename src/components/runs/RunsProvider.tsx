@@ -7,7 +7,7 @@ import { announceChange } from "@/components/LiveRefresh";
 
 interface RunsCtx {
   runs: ActiveRun[];
-  start: (repo: string, stageId: string, kind: RunKind) => Promise<string | null>;
+  start: (repo: string, stageId: string, kind: RunKind, commit?: string) => Promise<string | null>;
   stop: (runId: string) => Promise<string | null>;
   runFor: (repo: string) => ActiveRun | undefined;
 }
@@ -45,8 +45,8 @@ export function RunsProvider({ children, idleMs = 60_000 }: { children: ReactNod
   }, [refresh, anyRunning, idleMs]);
 
   const start = useCallback(
-    async (repo: string, stageId: string, kind: RunKind) => {
-      const r = await startRunAction(repo, stageId, kind);
+    async (repo: string, stageId: string, kind: RunKind, commit?: string) => {
+      const r = await startRunAction(repo, stageId, kind, commit);
       await refresh();
       announceChange();
       return "error" in r ? r.error : null;

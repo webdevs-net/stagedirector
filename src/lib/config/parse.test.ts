@@ -58,7 +58,7 @@ describe("parseConfig", () => {
     const cfg = parseConfig(readFileSync(join(process.cwd(), "examples/loquio.stagedirector.yml"), "utf8"));
     expect(cfg.type).toBe("app");
     expect(cfg.host).toBe("none");
-    expect(cfg.timeoutMinutes).toBe(180);
+    expect(cfg.timeoutMinutes).toBe(300);
     expect(cfg.stages.map((s) => s.name)).toEqual(["Loquio Dev", "Beta", "Released"]);
   });
 

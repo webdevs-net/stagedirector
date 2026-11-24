@@ -4,7 +4,8 @@
 - 2026-11-23 — Apps (Loquio): `ProjectConfig.type?: "site" | "app"` (wording, site-only tools hidden),
   `ProjectConfig.host?: "none"` (workflow loads no SSH key, joins no tailnet), `ProjectConfig.timeoutMinutes?`
   (deploy job limit, 5–360, default 45), and `StageStatus.version?: string | null` (the `v*` tag on the stage's
-  commit, filled for `type: app` from the repo's tags).
+  commit, filled for `type: app` from the repo's tags). App projects build their first deployable stage from a chosen
+  release tag: `startRun(..., commit?)` and the `BuildFromTag` picker; the tag list is `releaseCandidates()`.
 - `ProjectConfig.gateRunner?: "github" | "self-hosted"` (engine): where the workflow's "Check rules" job runs; passed as the `gate_runner` dispatch input.
 - 2026-11-18 — `ActivityEvent.runId?: number` added (data layer). Set on events that come from a
   workflow run and on "stop" events, so the UI can link to a run's log and stop a specific run.

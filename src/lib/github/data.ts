@@ -5,7 +5,7 @@ import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
 import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
 import { configuredRepos, dashboardIsApp, getOctokit, personOctokit, selfLogin, splitRepo } from "./client";
 import * as authMod from "@/lib/auth/auth";
-import { changesBetween, defaultBranchHead, readConfig, recentRuns, resolveRunStage, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { changesBetween, defaultBranchHead, readConfig, recentRuns, releaseCandidates, resolveRunStage, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 import { invalidate, swr } from "./swr";
@@ -294,6 +294,13 @@ async function performActionFresh(actor: string, input: ActionInput): Promise<Ac
   });
   const event = await store.append(input.repo, { ...base, commit, action: EVENT_ACTION[input.action], result: "queued" });
   return { ok: true, recordedAs: "action", event };
+}
+
+/** App projects: release tags on the branch that the first deployable stage can be built from (newest first). */
+export async function getReleaseCandidates(repo: string, branch: string) {
+  const gh = getOctokit();
+  if (!gh || !configuredRepos().includes(repo)) return [];
+  return releaseCandidates(gh, repo, branch);
 }
 
 export async function getRunLog(repo: string, runId: number): Promise<string | null> {
