@@ -447,3 +447,19 @@ export async function runLog(gh: Octokit, repo: string, runId: number): Promise<
   }
   return parts.join("\n\n");
 }
+
+/** Plain words for GitHub refusing to start the workflow. Nothing was started in each case. */
+export function startRunRefusal(e: unknown, repo: string, branch: string): { status: number; error: string } | null {
+  const status = (e as { status?: number }).status;
+  const msg = String((e as { message?: string }).message ?? "");
+  if (status === 404) {
+    return { status: 409, error: `GitHub could not find Stage Director's workflow (.github/workflows/${WORKFLOW_FILE}) on ${branch} in ${repo}. Merge it into ${branch} first. Nothing was started.` };
+  }
+  if (status === 422 && /disabled/i.test(msg)) {
+    return { status: 409, error: `Stage Director's workflow is turned off in ${repo} (Actions → Stage Director → Enable). Nothing was started.` };
+  }
+  if (status === 403) {
+    return { status: 403, error: `GitHub refused to start the workflow in ${repo} (${msg || "no permission"}). Nothing was started.` };
+  }
+  return null;
+}

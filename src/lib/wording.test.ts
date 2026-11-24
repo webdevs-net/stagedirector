@@ -73,3 +73,12 @@ describe("releaseCandidates", () => {
     expect(sortVersionsDesc([{ name: "v1.9.9" }, { name: "v1.10.0" }, { name: "v1.10.0-beta.1" }]).map((t) => t.name)).toEqual(["v1.10.0", "v1.10.0-beta.1", "v1.9.9"]);
   });
 });
+
+describe("startRunRefusal", () => {
+  it("says in plain words why GitHub would not start the workflow", async () => {
+    const { startRunRefusal } = await import("./github/repo");
+    expect(startRunRefusal({ status: 404 }, "o/r", "main")?.error).toMatch(/could not find Stage Director's workflow .* on main .*Nothing was started/);
+    expect(startRunRefusal({ status: 422, message: "Workflow is disabled" }, "o/r", "main")?.error).toMatch(/turned off/);
+    expect(startRunRefusal({ status: 500 }, "o/r", "main")).toBeNull();
+  });
+});
