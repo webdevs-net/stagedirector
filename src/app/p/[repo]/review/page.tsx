@@ -4,6 +4,7 @@ import { BackLink, ButtonLink, Card, Icon, Page } from "@/components/ui";
 import { CheckPanel } from "@/components/CheckPanel";
 import { ScreenPairs } from "@/components/ScreenPairs";
 import { getScreens } from "@/lib/data";
+import { wording } from "@/lib/wording";
 
 export default async function ReviewPage({ params, searchParams }: PageProps) {
   const { project: p, viewer, base, q, sp } = await loadProject(params, searchParams);
@@ -15,21 +16,23 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
   const before = p.config.stages[p.config.stages.length - 2];
   const slug = decodeURIComponent((await params).repo);
   const size = sp.size === "phone" ? "phone" : "desktop";
-  const screens = before ? await getScreens(slug, before.id) : null;
+  const w = wording(p.config);
+  // An app has no pages to photograph: its review is the list of changes.
+  const screens = before && w.siteTools ? await getScreens(slug, before.id) : null;
 
   return (
     <Page width="max-w-[860px]">
       <BackLink href={`${base}${q}`} label={p.config.name} />
-      <h1 className="text-3xl font-extrabold">Before you put it live</h1>
+      <h1 className="text-3xl font-extrabold">{w.reviewTitle}</h1>
       {!c ? (
         <p className="rounded-[22px] bg-white p-6 text-muted">Nothing is waiting for {last.name.toLowerCase()}.</p>
       ) : (
         <Card aria-labelledby="ba-title" className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="ba-title" className="text-xl font-extrabold">Before &amp; after</h2>
+            <h2 id="ba-title" className="text-xl font-extrabold">{w.siteTools ? <>Before &amp; after</> : "What changes"}</h2>
             <span className="font-bold text-muted">{c.title} · {idx + 1} of {p.waiting.length}</span>
           </div>
-          <ScreenPairs
+          {w.siteTools && <ScreenPairs
             screens={screens}
             slug={slug}
             liveId={last.id}
@@ -38,7 +41,7 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
             afterName={before?.name ?? "Staging"}
             size={size}
             sizeHref={(s) => `${base}/review?i=${idx}${s === "phone" ? "&size=phone" : ""}${q ? "&as=developer" : ""}`}
-          />
+          />}
           <p className="text-soft">{c.summary}</p>
           <nav aria-label="Changes" className="flex flex-wrap gap-2">
             {p.waiting.map((w, i) => (
@@ -54,7 +57,7 @@ export default async function ReviewPage({ params, searchParams }: PageProps) {
 
       {p.config.liveTodo && p.config.liveTodo.length > 0 && (
         <Card aria-labelledby="todo-title" className="flex flex-col gap-3">
-          <h2 id="todo-title" className="text-xl font-extrabold">To-do on live afterwards</h2>
+          <h2 id="todo-title" className="text-xl font-extrabold">{w.todoTitle}</h2>
           <ul className="flex flex-col gap-2">
             {p.config.liveTodo.map((t) => (
               <li key={t}>

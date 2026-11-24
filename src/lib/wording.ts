@@ -23,6 +23,9 @@ export interface Wording {
   lockNote: string;
   /** Short label for the last stage in lists ("Live updated 2 h ago" | "Released 2 h ago"). */
   lastUpdated: string;
+  /** Heading of the review page, and of the to-do list for after the last stage. */
+  reviewTitle: string;          // "Before you put it live" | "Before you release it to users"
+  todoTitle: string;            // "To-do on live afterwards" | "To-do after releasing"
   /** Whether site-only tools make sense: out-of-sync check, Save a backup, Copy live to staging. */
   siteTools: boolean;
 }
@@ -39,6 +42,8 @@ export function wording(config: Pick<ProjectConfig, "type">): Wording {
       seeLast: "See the release",
       lockNote: "Only code owners can release to users",
       lastUpdated: "Released",
+      reviewTitle: "Before you release it to users",
+      todoTitle: "To-do after releasing",
       siteTools: false,
     };
   }
@@ -52,6 +57,8 @@ export function wording(config: Pick<ProjectConfig, "type">): Wording {
     seeLast: "See live now",
     lockNote: "Only code owners can put changes live",
     lastUpdated: "Live updated",
+    reviewTitle: "Before you put it live",
+    todoTitle: "To-do on live afterwards",
     siteTools: true,
   };
 }

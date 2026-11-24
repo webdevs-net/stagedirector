@@ -5,10 +5,8 @@ import { loadProject, type PageProps } from "@/components/load";
 import { ButtonLink, Chevron, Eyebrow, Page } from "@/components/ui";
 import { getActivity } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
+import { verbOf } from "@/lib/runResult";
 
-const VERB: Record<ActivityEvent["action"], string> = {
-  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", snapshot: "backed up", check: "checked",
-};
 
 function who(actor: string) {
   if (actor === "auto") return "Automatically";
@@ -61,7 +59,7 @@ export default async function HistoryPage({ params, searchParams }: PageProps) {
               <summary className="flex min-h-[72px] flex-wrap items-center gap-3 px-5 py-2">
                 <span className={`h-3 w-3 rounded-full ${e.result === "failed" || e.result === "undone" ? "bg-[#d64545]" : e.result === "stopped" ? "bg-[#e59a1a]" : "bg-[#14a39d]"}`} aria-hidden="true" />
                 <span className="flex flex-1 flex-col">
-                  <span className="text-lg font-extrabold">{stageName(e.stageId)} {VERB[e.action]}</span>
+                  <span className="text-lg font-extrabold">{stageName(e.stageId)} {verbOf(e)}</span>
                   <span className="text-[15px] text-muted">{who(e.actor)} · {new Date(e.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" })}</span>
                 </span>
                 <Chevron />

@@ -5,7 +5,7 @@ import { decide, getRole, approvalValid, type StageAction } from "@/lib/auth";
 import { mayAnswer, openRequestsOf } from "@/lib/auth/permissions";
 import { configuredRepos, dashboardIsApp, getOctokit, personOctokit, selfLogin, splitRepo } from "./client";
 import * as authMod from "@/lib/auth/auth";
-import { changesBetween, defaultBranchHead, readConfig, recentRuns, releaseCandidates, resolveRunStage, startRunRefusal, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
+import { changesBetween, defaultBranchHead, readConfig, recentRuns, releaseCandidates, resolveRunStage, runFailureReason, startRunRefusal, roleSource, stageStatuses, pinRefExists, startRun, cancelRun, runLog, type RunAction } from "./repo";
 import { DeploymentStore, MemoryStore, type EventStore } from "./store";
 import { sampleActivity, sampleProjects } from "./sample";
 import { invalidate, swr } from "./swr";
@@ -125,6 +125,13 @@ async function getActivityFresh(repo: string, limit: number): Promise<ActivityEv
   }));
   // Pin/unpin/clear-cache runs are already logged by the dashboard record; keep runs for pushes and undos.
   const runEvents = fromRuns.filter((e) => e.action === "push" || e.action === "undo");
+  // Say why the newest failed runs failed (a few, and each run only once: finished runs never change).
+  await Promise.all(
+    runEvents.filter((e) => e.result === "failed" && e.runId).slice(0, 5).map(async (e) => {
+      const why = await runFailureReason(gh, repo, e.runId!).catch(() => null);
+      if (why) e.note = why;
+    }),
+  );
   // A dashboard push/undo record and its workflow run describe the same thing; keep the run (it has the result).
   const key = (e: ActivityEvent) => `${e.action}|${e.stageId}|${e.commit}|${e.actor}`;
   const runKeys = new Set(runEvents.map(key));

@@ -463,3 +463,35 @@ export function startRunRefusal(e: unknown, repo: string, branch: string): { sta
   }
   return null;
 }
+
+/**
+ * Why a finished run failed, in GitHub's words: the first failure annotation of a failed job
+ * (e.g. "The job was not started because recent account payments have failed…"), else the
+ * name of the failed step. Finished runs never change, so each is asked once.
+ */
+const failMemo = new Map<number, string | null>();
+export async function runFailureReason(gh: Octokit, repo: string, runId: number): Promise<string | null> {
+  if (failMemo.has(runId)) return failMemo.get(runId)!;
+  const { data } = await gh.rest.actions.listJobsForWorkflowRun({ ...splitRepo(repo), run_id: runId, per_page: 20 });
+  let reason: string | null = null;
+  for (const j of data.jobs.filter((x) => x.conclusion === "failure")) {
+    const notes = await gh.rest.checks.listAnnotations({ ...splitRepo(repo), check_run_id: j.id, per_page: 20 }).then((r) => r.data).catch(() => []);
+    const msg = notes.find((a) => a.annotation_level === "failure" && a.message && !/^Process completed with exit code/.test(a.message))?.message;
+    const step = (j.steps ?? []).find((s) => s.conclusion === "failure")?.name;
+    reason = failureText(j.name, msg ?? null, step ?? null);
+    if (reason) break;
+  }
+  failMemo.set(runId, reason);
+  return reason;
+}
+
+/** Plain sentence from a failed job: GitHub's own message, else the step that failed. */
+export function failureText(job: string, message: string | null, step: string | null): string | null {
+  if (message) {
+    if (/payments have failed|spending limit/i.test(message)) {
+      return "GitHub did not start the run: the account's Actions billing is blocked (failed payment or spending limit). Nothing changed.";
+    }
+    return `${job}: ${message.split("\n")[0].slice(0, 240)}`;
+  }
+  return step ? `${job}: the step "${step}" failed.` : null;
+}

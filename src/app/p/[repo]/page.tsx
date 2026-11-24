@@ -13,7 +13,8 @@ import { RequestsCard } from "@/components/RequestsCard";
 import { mayAnswer } from "@/lib/auth/permissions";
 import { PreviewToggle } from "@/components/PreviewToggle";
 import { RunnerBanner } from "@/components/RunnerBanner";
-import { releaseCandidates, runnerStatus } from "@/lib/data";
+import { getActivity, releaseCandidates, repoToSlug, runnerStatus } from "@/lib/data";
+import { unresolvedFailures, verbOf } from "@/lib/runResult";
 import { BuildFromTag } from "@/components/BuildFromTag";
 import { commitLabel, wording } from "@/lib/wording";
 
@@ -29,11 +30,14 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
   const n = p.waiting.length;
   const liveUnknown = p.lastKnown === null; // never deployed or checked by Stage Director: no comparison with live
   const liveSync = st(last.id)?.outOfSync ?? [];
-  const [local, runnerHealth, tags] = await Promise.all([
+  const [local, runnerHealth, tags, activity] = await Promise.all([
     readLocalWork(p.repo, p.config.branch),
     runnerStatus([p]),
     p.config.type === "app" ? releaseCandidates(p.repo, p.config.branch) : Promise.resolve([]),
+    getActivity(repoToSlug(p.repo)).catch(() => []),
   ]);
+  const failures = p.busy ? [] : unresolvedFailures(activity, p.stages);
+  const stageNameOf = (id?: string) => stages.find((s) => s.id === id)?.name ?? "A stage";
   const midRunning = middle ? st(middle.id)?.running ?? null : null;
   const liveRunning = st(last.id)?.running ?? null;
   const middlePinned = !!middle && !!st(middle.id)?.pinned;
@@ -62,6 +66,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps) {
       <div className="flex flex-col gap-3">
         <RunnerBanner health={runnerHealth} stages={stages} />
         {p.busy && <Banner kind="busy" title={`${p.busy.by} is updating ${p.busy.stageId}`} detail="Other buttons wait until it's done · about 1 min" action={{ label: "Watch", href: `${base}/updating${q}` }} />}
+        {failures.map((f) => (
+          <Banner key={f.id} kind="undid" title={`${stageNameOf(f.stageId)} ${verbOf(f)}`} detail={f.note && !f.note.startsWith("http") ? f.note : "The run on GitHub failed. Nothing new is on this stage."} action={{ label: "Why?", href: `${base}/history${q}` }} />
+        ))}
         {p.extras.safetyNetUndid && <Banner kind="undid" title="Safety net undid an update" detail={p.extras.safetyNetUndid} action={{ label: "Why?", href: `${base}/history${q}` }} />}
         {w.siteTools && liveSync.length > 0 && <Banner kind="sync" title="Out of sync" detail={`Someone changed ${liveSync.length} file on the ${last.name.toLowerCase()} directly`} action={{ label: "Look", href: `${base}/toolbox${q}#sync` }} />}
         {liveRunning && <Banner kind="sync" title={`${last.name}: ${runningHeadline(liveRunning, p.config.branch)}`} detail={`${runningDetail(liveRunning)}. Putting live from here still needs the usual approval.`} />}
