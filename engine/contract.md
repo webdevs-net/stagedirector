@@ -123,6 +123,21 @@ on the site. Exit `0` only when the backup is stored off the host; print one lin
 `STAGEDIRECTOR_SNAPSHOT=<id>` naming it. Example (WordPress with UpdraftPlus to Backblaze):
 `scripts/deploy.sh backup {stage}` running `wp updraftplus backup --send-to-cloud`.
 
+## `tools.copyLiveToStaging` (Copy live to staging)
+
+Pulls **live content** (database rows, uploads/media — whatever the project script
+defines) into the stage the dashboard named, almost always **staging**. Started by
+Toolbox **Copy live to staging** (`action: copy-live`). `{stage}` is filled in;
+`STAGEDIRECTOR_STAGE` is that destination stage. Same who-may rules as a deploy into
+that stage (developers for staging). **No** live approval. **Refused while pinned**
+(like deploy/rollback). Does **not** move code — `deploy` stays a separate pipe.
+Exit `0` when staging holds the copied data and is safe to preview; exit `2` if
+refused before touching anything (wrong stage, missing `STAGEDIRECTOR`, etc.);
+exit `1` if the copy failed part-way. Print one line
+`STAGEDIRECTOR_COPY_LIVE=<id>` naming the sync (timestamp or dump id). Example
+(WordPress on Hostinger): `scripts/copy-live-to-staging.sh` — see
+`engine/examples/mariasplace/`.
+
 ## `tools.clearCache`
 
 Clears the stage's caches (`STAGEDIRECTOR_STAGE`). Idempotent. Failure is reported
@@ -214,7 +229,7 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
 
 1. **Dispatch from the default branch.** A run started on another ref is refused.
 2. **Inputs valid.** Stage id in config, 40-char SHA present in the repo, action one of
-   `deploy|rollback|pin|unpin|clear-cache`.
+   `deploy|rollback|pin|unpin|clear-cache|snapshot|copy-live`.
 3. **Who.**
    - `pushers: none` → always refused.
    - `developers` → `github.actor` has write/maintain/admin.
@@ -222,7 +237,8 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
      `github.triggering_actor` are listed on the `*` line of CODEOWNERS (teams
      expanded), are not bots; `requested_by` does not start with `claude:`.
      So the dashboard must start live runs with the **person's own** GitHub token.
-4. **Pinned.** `refs/stagedirector/pins/<stage>` exists → deploy/rollback refused.
+4. **Pinned.** `refs/stagedirector/pins/<stage>` exists → deploy/rollback/`copy-live`
+   refused. `clear-cache` and `snapshot` are allowed (they change nothing on the site).
    `pin` creates/moves that ref to the commit; `unpin` deletes it. Same "who" rules.
 5. **Approval of this exact commit** (deploy into code-owners stage). The newest commit
    status with context `stagedirector/approval/<stage>` on the commit must be

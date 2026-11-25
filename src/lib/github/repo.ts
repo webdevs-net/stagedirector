@@ -14,7 +14,7 @@ import { summarize, summariesEnabled } from "./summary";
 //    ref = commit, payload { stagedirector: 1, actor, outOfSync?: string[] },
 //    and sets its status to success / failure.
 
-export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot";
+export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "copy-live";
 
 export async function readFile(gh: Octokit, repo: string, path: string, ref?: string): Promise<string | null> {
   // Page views read the default branch from the local copy (no API). Actions (and refs) ask GitHub.

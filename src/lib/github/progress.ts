@@ -31,9 +31,9 @@ export interface Progress {
 export function plainStepOf(jobName: string, stepName: string): number {
   const s = stepName.toLowerCase();
   if (/check rules/i.test(jobName)) return 0;
-  if (/^run (deploy|rollback|clear-cache|pin|unpin)\b/.test(s) || s.startsWith("run ")) return 2;
+  if (/^run (deploy|rollback|clear-cache|snapshot|copy-live|pin|unpin)\b/.test(s) || s.startsWith("run ")) return 2;
   if (/clean ?up|post |complete job/.test(s)) return 3;
-  if (/backup|snapshot/.test(s)) return 1;
+  if (/backup|snapshot|copy.?live/.test(s)) return 1;
   return 0;
 }
 

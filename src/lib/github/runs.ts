@@ -47,6 +47,8 @@ async function configOf(gh: Octokit, repo: string): Promise<ProjectConfig | null
 function kindOf(action: string | null, config: ProjectConfig, stageId: string): RunKind | null {
   if (action === "rollback") return "undo";
   if (action === "clear-cache") return "clear-cache";
+  if (action === "snapshot") return "snapshot";
+  if (action === "copy-live") return "copy-live";
   if (action === "deploy" || action === null) return config.stages.at(-1)?.id === stageId ? "put-live" : "update";
   return null; // pin/unpin are instant; no run window for them
 }
@@ -67,7 +69,11 @@ export function toActiveRun(r: RunInfo, config: ProjectConfig, repo: string, job
   if (!stage) return null;
   const kind = kindOf(r.action, config, stage.id);
   if (!kind) return null;
-  const steps = kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : undefined;
+  const steps =
+    kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"]
+    : kind === "snapshot" ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"]
+    : kind === "copy-live" ? ["Reading live data", "Copying into staging", "Making sure staging still loads"]
+    : undefined;
   const p = mapProgress(jobs ?? [], steps);
   const running = r.state === "running" || r.state === "queued";
   const state: ActiveRun["state"] = running ? "running" : r.state === "passed" ? "passed" : r.state === "stopped" ? "stopped" : "failed";

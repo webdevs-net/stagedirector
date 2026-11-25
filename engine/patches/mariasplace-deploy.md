@@ -38,6 +38,10 @@ Runner needs `jq` (installed by `setup-ovh1.sh`).
   wanted. `scripts/clear-cache.sh` does not exist yet; remove `tools.clearCache` or add one
   (e.g. `ssh hostinger 'cd domains/mariasplace.com/public_html && wp cache flush'` with a
   staging/live switch on `STAGEDIRECTOR_STAGE`).
+- `scripts/copy-live-to-staging.sh` = `engine/examples/mariasplace/copy-live-to-staging.sh`
+  (edit Hostinger paths and registration tables). Cutover steps:
+  `engine/examples/mariasplace/CUTOVER.md`. Deploy still does not move DB/media or delete
+  obsolete plugins — wipe live leftovers by hand before putting lean code live.
 - `CODEOWNERS` with a `*` line naming the code owners (people, e.g. `* @<owner-login>`).
 
 ## On the runner

@@ -65,8 +65,17 @@ const MARIAS: ProjectConfig = {
       runner: "ovh1",
     },
   ],
-  tools: { clearCache: "scripts/clear-cache.sh", syncCheck: "scripts/deploy.sh drift" },
-  liveTodo: ["Clear the Divi page styles on the login page", "Repeat any Divi page edits made on staging"],
+  tools: {
+    clearCache: "scripts/clear-cache.sh",
+    syncCheck: "scripts/deploy.sh drift",
+    copyLiveToStaging: "scripts/copy-live-to-staging.sh",
+  },
+  liveTodo: [
+    "Full backup of live first",
+    "Remove obsolete plugins/themes from live (deploy will not delete them)",
+    "Put the lean code live, then push the previewed data set",
+    "Repeat any Divi page edits made only on staging",
+  ],
 };
 
 const MARIAS_CHANGES: Change[] = [
@@ -287,7 +296,7 @@ export { repoToSlug, RUN_STEPS };
 
 // ---- Runs (mock). The data layer replaces these with GitHub workflow-run polling. ----
 
-export type RunKind = "update" | "put-live" | "undo" | "clear-cache" | "snapshot";
+export type RunKind = "update" | "put-live" | "undo" | "clear-cache" | "snapshot" | "copy-live";
 
 export interface ActiveRun {
   id: string;
@@ -353,7 +362,14 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
     kind,
     startedAt: Date.now(),
     step: 0,
-    steps: kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"] : kind === "snapshot" ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"] : RUN_STEPS,
+    steps:
+      kind === "clear-cache"
+        ? ["Clearing cache", "Making sure the site still loads"]
+        : kind === "snapshot"
+          ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"]
+          : kind === "copy-live"
+            ? ["Reading live data", "Copying into staging", "Making sure staging still loads"]
+            : RUN_STEPS,
     progress: 0,
     state: "running",
     finishedAt: null,

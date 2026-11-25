@@ -45,5 +45,10 @@ checks: # run by the dashboard in the review step and after each run; results go
 tools:
   clearCache: scripts/clear-cache.sh
   syncCheck: scripts/deploy.sh drift
+  # Live DB/media → staging (not code). See engine/examples/mariasplace/.
+  copyLiveToStaging: scripts/copy-live-to-staging.sh
 liveTodo:
-  - Repeat any Divi page edits made on staging
+  - Full backup of live first
+  - Remove obsolete plugins/themes from live (deploy will not delete them)
+  - Put the lean code live, then push the previewed data set
+  - Repeat any Divi page edits made only on staging

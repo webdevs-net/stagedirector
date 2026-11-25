@@ -4,7 +4,7 @@ import { filterFromParams, toParams } from "@/lib/activity";
 import { getAllActivity, listProjects } from "@/lib/data";
 import type { ActivityEvent } from "@/lib/types";
 
-const ACTIONS: ActivityEvent["action"][] = ["push", "approve", "undo", "stop", "pin", "unpin", "request", "decline", "clear-cache", "snapshot", "check"];
+const ACTIONS: ActivityEvent["action"][] = ["push", "approve", "undo", "stop", "pin", "unpin", "request", "decline", "clear-cache", "snapshot", "copy-live", "check"];
 const RESULTS = ["passed", "failed", "stopped", "undone", "queued", "running"];
 const PAGE = 100;
 

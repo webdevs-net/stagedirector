@@ -14,6 +14,8 @@ describe("parseConfig", () => {
     expect(cfg.stages[2].pushers).toBe("code-owners");
     expect(cfg.stages[1].smokeTest).toContain("/login/");
     expect(cfg.tools?.clearCache).toBe("scripts/clear-cache.sh");
+    expect(cfg.tools?.copyLiveToStaging).toBe("scripts/copy-live-to-staging.sh");
+    expect(cfg.liveTodo?.[0]).toMatch(/backup/i);
   });
 
   it("defaults branch to main", () => {

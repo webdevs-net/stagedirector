@@ -117,9 +117,10 @@ describe("pinned stages", () => {
       { id: "live", name: "Live", pushers: "code-owners", trigger: "manual" },
     ],
   };
-  it("blocks deploy and rollback while pinned, like the workflow", () => {
+  it("blocks deploy, rollback and copy-live while pinned, like the workflow", () => {
     expect(decide({ config, stageId: "staging", action: "deploy", actor: "dev", role: "developer", commit: "a".repeat(40), pinned: true }).allowed).toBe(false);
     expect(decide({ config, stageId: "staging", action: "rollback", actor: "dev", role: "developer", pinned: true }).allowed).toBe(false);
+    expect(decide({ config: { ...config, tools: { ...config.tools, copyLiveToStaging: "x" } }, stageId: "staging", action: "copy-live", actor: "dev", role: "developer", pinned: true }).allowed).toBe(false);
     expect(decide({ config, stageId: "staging", action: "unpin", actor: "dev", role: "developer", pinned: true }).allowed).toBe(true);
   });
   it("only code owners pin the last stage", () => {
@@ -165,5 +166,21 @@ describe("Save a backup (snapshot)", () => {
     expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "ryan", role: "code-owner", pinned: true })).toEqual({ allowed: true, recordAs: "action" });
     expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "dev", role: "developer" }).allowed).toBe(false);
     expect(decide({ config: withSnap, stageId: "live", action: "snapshot", actor: "claude:ryan", role: "code-owner" })).toEqual({ allowed: true, recordAs: "request" });
+  });
+});
+
+describe("Copy live to staging", () => {
+  const withCopy: ProjectConfig = { ...config, tools: { ...config.tools, copyLiveToStaging: "scripts/copy-live-to-staging.sh" } };
+  it("needs a tools.copyLiveToStaging command", () => {
+    expect(decide({ config, stageId: "staging", action: "copy-live", actor: "dev", role: "developer" }).allowed).toBe(false);
+  });
+  it("developers may run it on staging; no approval; refused while pinned", () => {
+    expect(decide({ config: withCopy, stageId: "staging", action: "copy-live", actor: "dev", role: "developer" })).toEqual({ allowed: true, recordAs: "action" });
+    expect(decide({ config: withCopy, stageId: "staging", action: "copy-live", actor: "dev", role: "developer", pinned: true }).allowed).toBe(false);
+    expect(decide({ config: withCopy, stageId: "staging", action: "copy-live", actor: "claude:dev", role: "developer" })).toEqual({ allowed: true, recordAs: "request" });
+  });
+  it("follows who may push the destination stage", () => {
+    expect(decide({ config: withCopy, stageId: "live", action: "copy-live", actor: "dev", role: "developer" }).allowed).toBe(false);
+    expect(decide({ config: withCopy, stageId: "live", action: "copy-live", actor: "ryan", role: "code-owner" })).toEqual({ allowed: true, recordAs: "action" });
   });
 });

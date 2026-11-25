@@ -17,13 +17,16 @@ const ICONS = {
 
 export default async function ToolboxPage({ params, searchParams }: PageProps) {
   const { project: p, base, q } = await loadProject(params, searchParams);
-  const live = p.stages[p.stages.length - 1];
+  const liveStatus = p.stages[p.stages.length - 1];
+  const live = p.config.stages[p.config.stages.length - 1];
+  // Copy live → staging runs against the stage before live (not live itself).
+  const staging = p.config.stages.length >= 2 ? p.config.stages[p.config.stages.length - 2] : null;
   const site = wording(p.config).siteTools;
   const tiles = [
-    { t: "Clear cache", d: "Show the newest version", on: !!p.config.tools?.clearCache, icon: ICONS.cache, kind: "clear-cache" as const },
-    { t: "Save a backup", d: "Whole site, right now", on: site && !!p.config.tools?.snapshot, icon: ICONS.backup, kind: "snapshot" as const },
-    { t: "Copy live to staging", d: "Real pages and photos", on: site && p.config.stages.length > 2, icon: ICONS.copy },
-    { t: "Update plugins", d: "Staging first, then live", on: p.config.kind?.startsWith("WordPress") ?? false, badge: 3, icon: ICONS.plugin },
+    { t: "Clear cache", d: "Show the newest version", on: !!p.config.tools?.clearCache, icon: ICONS.cache, kind: "clear-cache" as const, stageId: live?.id },
+    { t: "Save a backup", d: "Whole site, right now", on: site && !!p.config.tools?.snapshot, icon: ICONS.backup, kind: "snapshot" as const, stageId: live?.id },
+    { t: "Copy live to staging", d: "Real pages and photos", on: site && !!p.config.tools?.copyLiveToStaging && !!staging, icon: ICONS.copy, kind: "copy-live" as const, stageId: staging?.id },
+    { t: "Update plugins", d: "Staging first, then live", on: p.config.kind?.startsWith("WordPress") ?? false, badge: 3, icon: ICONS.plugin, stageId: live?.id },
   ].filter((x) => x.on);
 
   return (
@@ -35,7 +38,7 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
         <Eyebrow><span id="do-title">DO SOMETHING</span></Eyebrow>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {tiles.map((x) => (
-            <ToolTile key={x.t} repo={p.repo} stageId={p.config.stages[p.config.stages.length - 1].id} kind={x.kind} title={x.t} detail={x.d} icon={x.icon} badge={x.badge} />
+            <ToolTile key={x.t} repo={p.repo} stageId={x.stageId!} kind={x.kind} title={x.t} detail={x.d} icon={x.icon} badge={x.badge} />
           ))}
         </div>
       </section>
@@ -44,8 +47,8 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
         <Eyebrow><span id="safe-title">KEEPING THE SITE SAFE</span></Eyebrow>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <SafeCard title="Safety net" body="If an update breaks something, it's undone by itself"><Toggle label="Safety net" on /></SafeCard>
-          {site && <SafeCard id="sync" title="Sync check" body={live?.outOfSync.length ? `${live.outOfSync.length} file on live was changed outside git` : p.lastKnown === null ? "Not checked yet: no deploy or check of live on record" : "Live matches git"}>
-            {live?.outOfSync.length ? <ButtonLink href={`${base}/history${q}`} tone="amber">Look</ButtonLink> : p.lastKnown === null ? <span className="font-bold text-muted">Not checked</span> : <span className="font-bold text-[#0f6f6b]">All good</span>}
+          {site && <SafeCard id="sync" title="Sync check" body={liveStatus?.outOfSync.length ? `${liveStatus.outOfSync.length} file on live was changed outside git` : p.lastKnown === null ? "Not checked yet: no deploy or check of live on record" : "Live matches git"}>
+            {liveStatus?.outOfSync.length ? <ButtonLink href={`${base}/history${q}`} tone="amber">Look</ButtonLink> : p.lastKnown === null ? <span className="font-bold text-muted">Not checked</span> : <span className="font-bold text-[#0f6f6b]">All good</span>}
           </SafeCard>}
           {site && <SafeCard title="Site watch" body="Live site is up · checked 1 min ago"><span className="flex items-center gap-1.5 font-bold text-[#0f6f6b]"><Icon name="check" /> Up</span></SafeCard>}
           {site && <SafeCard title="No-downtime switch" body={p.config.noDowntime ? "Updates swap in one step; Undo takes seconds" : "Off · set noDowntime: true in stagedirector.yml"}>

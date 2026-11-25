@@ -6,6 +6,7 @@ Add notes under **Unreleased** in every PR; they move under a version number on 
 
 ## Unreleased
 
+- Toolbox **Copy live to staging** is real: `tools.copyLiveToStaging` → workflow action `copy-live` (live DB/media into staging, not code). Developers who may push staging can run it; refused while pinned; no live approval. Maria's Place example script and wipe-then-push cutover notes in `engine/examples/mariasplace/`.
 - Local GitHub Actions by default: "Check rules" runs on a self-hosted `sd-gate` runner unless a project sets `gateRunner: github` (or the repo variable `STAGEDIRECTOR_GATE_RUNNER=github`). The dashboard always sends `gate_runner`.
 - Inquire tab on each project: ask every stage how it is (reachable? status? runner? local path), and list every checkout mapped in `stagedirector.local.json` when you are on localhost.
 - A failed run now says so. History shows "Beta update failed" (not "Beta updated"), with GitHub's reason (for example "Actions billing is blocked"); the project page shows a red banner while a stage's newest update failed and nothing has succeeded since. Found pressing Build on Loquio while its GitHub billing was blocked.

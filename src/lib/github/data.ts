@@ -168,6 +168,7 @@ const RUN_ACTIONS: Record<Exclude<StageAction, "approve" | "stop">, RunAction> =
   unpin: "unpin",
   "clear-cache": "clear-cache",
   snapshot: "snapshot",
+  "copy-live": "copy-live",
 };
 const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   deploy: "push",
@@ -176,6 +177,7 @@ const EVENT_ACTION: Record<StageAction, ActivityEvent["action"]> = {
   unpin: "unpin",
   "clear-cache": "clear-cache",
   snapshot: "snapshot",
+  "copy-live": "copy-live",
   stop: "stop",
   approve: "approve",
 };
@@ -282,7 +284,7 @@ async function performActionFresh(actor: string, input: ActionInput): Promise<Ac
   let commit = input.commit ?? stages[idx].commit;
   // A backup or a cache clear does not move code, so it needs no record of what is on the stage:
   // the workflow only wants a commit to check out its scripts. Use the source branch's tip.
-  if (!commit && (input.action === "snapshot" || input.action === "clear-cache")) {
+  if (!commit && (input.action === "snapshot" || input.action === "clear-cache" || input.action === "copy-live")) {
     commit = (await gh.rest.repos.getBranch({ ...splitRepo(input.repo), branch: config.branch })).data.commit.sha;
   }
   if (!commit) return { ok: false, status: 400, error: "nothing on that stage yet" };
