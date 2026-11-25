@@ -129,7 +129,10 @@ capabilities, and memory/CPU caps (`DASHBOARD_MEMORY`, `DASHBOARD_CPUS`).
   local checkout's uncommitted files and unpushed commits, with the push command to copy.
   Map repos to folders in `stagedirector.local.json` (git-ignored; see
   `stagedirector.local.example.json`) or `STAGEDIRECTOR_LOCAL_PATHS="owner/repo=/path"`.
-  Read-only: it never commits or pushes.
+  Read-only: it never commits or pushes. The **Inquire** tab probes every stage URL and lists
+  those local paths.
+- **Local Actions by default**: "Check rules" runs on a self-hosted runner labelled `sd-gate`
+  unless the project sets `gateRunner: github`.
 - **Outside deploys** (e.g. `scripts/deploy.sh staging` from a terminal): see
   `engine/contract.md` "Outside deploys". Display only; the live gate is unchanged.
 

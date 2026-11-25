@@ -62,7 +62,7 @@ on:
         required: true
         type: string
       gate_runner:
-        description: Where "Check rules" runs. self-hosted = a runner labelled sd-gate; anything else = GitHub-hosted
+        description: Where "Check rules" runs. Default is local (self-hosted runner labelled sd-gate). Pass "github" only to use GitHub-hosted minutes.
         required: false
         type: string
 
@@ -84,11 +84,10 @@ concurrency:
 jobs:
   gate:
     name: Check rules
-    # GitHub-hosted by default (needs no host access). gateRunner: self-hosted in stagedirector.yml
-    # (passed by the dashboard), or repo variable STAGEDIRECTOR_GATE_RUNNER=self-hosted for pushes,
-    # runs it on a runner labelled sd-gate instead, which uses no GitHub-hosted minutes. The label is
-    # fixed here, so a caller cannot send this job to a stage's deploy runner.
-    runs-on: ${{ (inputs.gate_runner || vars.STAGEDIRECTOR_GATE_RUNNER) == 'self-hosted' && fromJSON('["self-hosted","sd-gate"]') || 'ubuntu-latest' }}
+    # Local Actions by default (runner labelled sd-gate — no GitHub-hosted minutes). Pass
+    # gate_runner=github (or set repo variable STAGEDIRECTOR_GATE_RUNNER=github) to use ubuntu-latest.
+    # The label is fixed here, so a caller cannot send this job to a stage's deploy runner.
+    runs-on: ${{ (inputs.gate_runner || vars.STAGEDIRECTOR_GATE_RUNNER || 'self-hosted') == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted","sd-gate"]') }}
     timeout-minutes: 10
     outputs:
       go: ${{ steps.gate.outputs.go }}

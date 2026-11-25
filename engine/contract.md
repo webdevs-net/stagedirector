@@ -41,7 +41,7 @@ Placeholders in `stagedirector.yml` commands: `{backup}`, `{commit}`, `{stage}`.
 `runner: github` = GitHub-hosted `ubuntu-latest`; if the environment has
 `TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` the job joins the tailnet first, and the variable
 `STAGEDIRECTOR_KNOWN_HOSTS` pins host keys. Used with `kits/ssh-compose` (forced-command SSH).
-The rules check runs GitHub-hosted unless `gateRunner: self-hosted` (a runner labelled `sd-gate`).
+The rules check runs on local Actions by default (a runner labelled `sd-gate`). Set `gateRunner: github` only when you want GitHub-hosted minutes instead.
 
 `host: none` in `stagedirector.yml`: the commands reach no host (an app published as a GitHub
 Release, a package registry). The workflow then skips Tailscale, known hosts and the SSH key, so the

@@ -6,7 +6,8 @@
   (deploy job limit, 5–360, default 45), and `StageStatus.version?: string | null` (the `v*` tag on the stage's
   commit, filled for `type: app` from the repo's tags). App projects build their first deployable stage from a chosen
   release tag: `startRun(..., commit?)` and the `BuildFromTag` picker; the tag list is `releaseCandidates()`.
-- `ProjectConfig.gateRunner?: "github" | "self-hosted"` (engine): where the workflow's "Check rules" job runs; passed as the `gate_runner` dispatch input.
+- `ProjectConfig.gateRunner?: "github" | "self-hosted"` (engine): where the workflow's "Check rules" job runs; passed as the `gate_runner` dispatch input. Default is `self-hosted` (local Actions on `sd-gate`); set `github` to opt into GitHub-hosted minutes.
+- 2026-11-25 — Inquire tab: probes each stage URL from the project's own config and lists local checkout paths from `stagedirector.local.json` when the dashboard is opened at localhost.
 - 2026-11-18 — `ActivityEvent.runId?: number` added (data layer). Set on events that come from a
   workflow run and on "stop" events, so the UI can link to a run's log and stop a specific run.
 - 2026-11-18 — `ProjectConfig.checks?: CheckConfig[]` and `CheckResult` added (checks before and after,

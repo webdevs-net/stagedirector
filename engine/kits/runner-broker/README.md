@@ -82,19 +82,19 @@ journalctl -t stagedirector-runner -t stagedirector-broker --since today
 Then press Deploy for staging in the dashboard and watch a runner appear in
 repo Settings > Actions > Runners, take the job, and disappear.
 
-## Save GitHub-hosted minutes on "Check rules" too (optional)
+## "Check rules" on local Actions (default)
 
 Each run has two jobs: "Check rules" (the gate) and the deploy job. The deploy job already runs
-here. The gate is GitHub-hosted by default; each one is billed as at least one minute on private
-repos. To run it here as well:
+here. The gate also defaults to local Actions (label `sd-gate`), so private repos spend no
+GitHub-hosted minutes on the rules check.
 
 1. Add a dispatcher instance `sd-gate` with `LABEL=sd-gate` and **no** `BROKER_SOCKET` (it gets no
    deploy door; it only reads the repo and GitHub's records).
-2. In the project's `stagedirector.yml`: `gateRunner: self-hosted` (the dashboard passes it on
-   every button press). For runs started by a push, also set the repo variable
+2. Leave `gateRunner` unset (or set `self-hosted`). The dashboard sends `gate_runner=self-hosted` on
+   every button press. For runs started by a push, keep the repo variable unset, or set
    `STAGEDIRECTOR_GATE_RUNNER=self-hosted`.
 
 The workflow fixes the label to `sd-gate`, so nobody can send the gate to a stage's deploy runner.
-Trade-off: the live approval check then runs on your host, so that host must be trusted as much as
-GitHub's own runners. If the `sd-gate` runner is down, runs wait in GitHub's queue; switch back with
-`gateRunner: github`.
+Trade-off: the live approval check runs on your host, so that host must be trusted as much as
+GitHub's own runners. If the `sd-gate` runner is down, runs wait in GitHub's queue; opt into
+GitHub-hosted minutes with `gateRunner: github` (or `STAGEDIRECTOR_GATE_RUNNER=github`).

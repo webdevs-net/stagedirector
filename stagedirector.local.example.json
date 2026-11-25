@@ -1,5 +1,7 @@
 {
   "paths": {
-    "netdevs-net/mariasplace": "/Users/you/Sites/MariasPlace"
+    "netdevs-net/mariasplace": "/Users/you/Sites/MariasPlace",
+    "webdevs-net/loquio": "/Users/you/Sites/Loquio",
+    "webdevs-net/stagedirector": "/Users/you/Sites/stagedirector"
   }
 }

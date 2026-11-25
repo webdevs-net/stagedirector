@@ -37,7 +37,8 @@ export interface ProjectConfig {
   liveTodo?: string[];        // manual steps to repeat after a live push
   checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
-  gateRunner?: "github" | "self-hosted"; // where the "Check rules" job runs; self-hosted = runner labelled sd-gate
+  /** Where "Check rules" runs. Default (omit or "self-hosted") = local Actions on a runner labelled sd-gate. Set "github" only to spend GitHub-hosted minutes. */
+  gateRunner?: "github" | "self-hosted";
   /** "site" (default) = a website on a host. "app" = a program people download: app wording,
    *  no out-of-sync or backup tools, and the version tag shown next to each stage's commit. */
   type?: "site" | "app";

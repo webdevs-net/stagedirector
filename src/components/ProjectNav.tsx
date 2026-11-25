@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui";
 
-type Tab = "overview" | "history" | "toolbox";
+type Tab = "overview" | "history" | "inquire" | "toolbox";
 
 // One quiet bar across the top of every project page, like App Store Connect:
 // where you are on the left, the project's sections on the right.
@@ -9,6 +9,7 @@ export function ProjectNav({ name, base, q, active }: { name: string; base: stri
   const tabs: { id: Tab; label: string; href: string }[] = [
     { id: "overview", label: "Overview", href: `${base}${q}` },
     { id: "history", label: "History", href: `${base}/history${q}` },
+    { id: "inquire", label: "Inquire", href: `${base}/inquire${q}` },
     { id: "toolbox", label: "Toolbox", href: `${base}/toolbox${q}` },
   ];
   return (

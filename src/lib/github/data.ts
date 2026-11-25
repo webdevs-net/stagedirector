@@ -298,7 +298,8 @@ async function performActionFresh(actor: string, input: ActionInput): Promise<Ac
       commit,
       action: RUN_ACTIONS[input.action as keyof typeof RUN_ACTIONS],
       requestedBy: actor,
-      gateRunner: config.gateRunner,
+      // Local Actions by default; projects opt into GitHub-hosted with gateRunner: github.
+      gateRunner: config.gateRunner ?? "self-hosted",
     });
   } catch (e) {
     const why = startRunRefusal(e, input.repo, config.branch);
