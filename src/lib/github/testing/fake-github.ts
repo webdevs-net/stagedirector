@@ -161,7 +161,7 @@ export class FakeGitHub {
     const { stage, commit, action, requested_by } = run.inputs;
     const pinned = `stagedirector/pins/${stage}` in r.refs;
     let result = conclusion;
-    if (pinned && action !== "pin" && action !== "unpin" && action !== "clear-cache") {
+    if (pinned && action !== "pin" && action !== "unpin" && action !== "clear-cache" && action !== "snapshot") {
       result = "failure";
       run.log.push(`### Refused\nStage '${stage}' is pinned. Unpin it first.`);
     } else if (action === "deploy" && stage === "live" && !r.statuses.some((x) => x.sha === commit && x.context === "stagedirector/approval/live" && x.state === "success")) {

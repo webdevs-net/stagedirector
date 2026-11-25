@@ -14,7 +14,7 @@ export function RunDetails({ repo, stageId, stageName, demo, checkable }: { repo
   const current = r ? (r.state === "running" ? r.step : steps.length) : 2;
   const pct = r?.progress ?? 60;
   const running = !r || r.state === "running";
-  const finished = !!r && r.state !== "running" && r.state !== "stopped" && r.kind !== "clear-cache" && r.kind !== "snapshot";
+  const finished = !!r && r.state !== "running" && r.state !== "stopped" && r.kind !== "clear-cache" && r.kind !== "snapshot" && r.kind !== "copy-live";
   return (
     <>
     <section className="flex flex-col items-center gap-4 rounded-[32px] bg-white p-6 text-center shadow-[0_6px_24px_rgba(30,43,58,.07)] sm:p-9">

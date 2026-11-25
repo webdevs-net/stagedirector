@@ -31,13 +31,14 @@ export interface ProjectConfig {
   tools?: {
     clearCache?: string;      // command
     syncCheck?: string;       // command, prints changed paths
-    copyLiveToStaging?: string;
+    copyLiveToStaging?: string; // valuable live slice → staging (not full DB, not code); action: copy-live
     snapshot?: string;        // e.g. a Kopia command
   };
   liveTodo?: string[];        // manual steps to repeat after a live push
   checks?: CheckConfig[];     // shown in the review step and after each run
   noDowntime?: boolean;       // use release folders + switch when the host allows
-  gateRunner?: "github" | "self-hosted"; // where the "Check rules" job runs; self-hosted = runner labelled sd-gate
+  /** Where "Check rules" runs. Default (omit or "self-hosted") = local Actions on a runner labelled sd-gate. Set "github" only to spend GitHub-hosted minutes. */
+  gateRunner?: "github" | "self-hosted";
   /** "site" (default) = a website on a host. "app" = a program people download: app wording,
    *  no out-of-sync or backup tools, and the version tag shown next to each stage's commit. */
   type?: "site" | "app";
@@ -116,14 +117,14 @@ export interface ActivityEvent {
   id: string;
   at: string;
   actor: string;              // GitHub login, "auto", or "claude:<login>" for a session acting for a person
-  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "snapshot" | "check";
+  action: "push" | "approve" | "pin" | "unpin" | "undo" | "stop" | "request" | "decline" | "clear-cache" | "snapshot" | "copy-live" | "check";
   stageId?: string;
   commit?: string;
   result?: RunState;
   note?: string;
   runId?: number;             // GitHub Actions run id, when the event is (or started) a workflow run
   /** On a "request": what the Claude session asks for. */
-  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "approve";
+  wants?: "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "copy-live" | "approve";
   /** On the event that answers a request (the push it led to, or a "decline"): the request's id. */
   answers?: string;
 }

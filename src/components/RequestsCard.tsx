@@ -6,7 +6,7 @@ import { answerRequestAction } from "@/app/actions";
 import type { PushRequest, StageConfig } from "@/lib/types";
 
 const WANTS: Record<PushRequest["wants"], string> = {
-  deploy: "update", rollback: "undo the last update on", pin: "pin", unpin: "unpin", "clear-cache": "clear the cache on", snapshot: "back up", approve: "approve the changes for",
+  deploy: "update", rollback: "undo the last update on", pin: "pin", unpin: "unpin", "clear-cache": "clear the cache on", snapshot: "back up", "copy-live": "copy live data into", approve: "approve the changes for",
 };
 
 /** Requests from Claude sessions. A person OKs or declines each one; Claude never can. */

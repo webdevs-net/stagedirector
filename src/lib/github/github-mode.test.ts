@@ -61,7 +61,7 @@ describe("GitHub mode (fake GitHub)", () => {
     const r = await data.performAction("dev", { repo: REPO, stageId: "staging", action: "deploy", commit: sha(4) });
     expect(r.ok).toBe(true);
     const run = fake.latestRun(REPO)!;
-    expect(run.inputs).toEqual({ stage: "staging", commit: sha(4), action: "deploy", requested_by: "dev" });
+    expect(run.inputs).toEqual({ stage: "staging", commit: sha(4), action: "deploy", requested_by: "dev", gate_runner: "self-hosted" });
 
     fake.step(REPO, run.id); // gate running
     runs.forgetRuns(REPO);

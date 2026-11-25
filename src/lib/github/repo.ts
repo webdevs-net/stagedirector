@@ -14,7 +14,7 @@ import { summarize, summariesEnabled } from "./summary";
 //    ref = commit, payload { stagedirector: 1, actor, outOfSync?: string[] },
 //    and sets its status to success / failure.
 
-export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot";
+export type RunAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "copy-live";
 
 export async function readFile(gh: Octokit, repo: string, path: string, ref?: string): Promise<string | null> {
   // Page views read the default branch from the local copy (no API). Actions (and refs) ask GitHub.
@@ -422,9 +422,14 @@ export async function startRun(
   branch: string,
   inputs: { stage: string; commit: string; action: RunAction; requestedBy: string; gateRunner?: "github" | "self-hosted" },
 ): Promise<void> {
-  const sent: Record<string, string> = { stage: inputs.stage, commit: inputs.commit, action: inputs.action, requested_by: inputs.requestedBy };
-  // Only sent when set, so workflows copied before gate_runner existed keep working.
-  if (inputs.gateRunner) sent.gate_runner = inputs.gateRunner;
+  const sent: Record<string, string> = {
+    stage: inputs.stage,
+    commit: inputs.commit,
+    action: inputs.action,
+    requested_by: inputs.requestedBy,
+    // Always send so copied workflows that default to local Actions stay explicit.
+    gate_runner: inputs.gateRunner ?? "self-hosted",
+  };
   await gh.rest.actions.createWorkflowDispatch({ ...splitRepo(repo), workflow_id: WORKFLOW_FILE, ref: branch, inputs: sent });
 }
 

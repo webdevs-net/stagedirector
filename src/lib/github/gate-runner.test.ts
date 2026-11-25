@@ -10,14 +10,18 @@ function fakeGh() {
 }
 
 describe("gate runner setting", () => {
-  it("sends gate_runner only when the project sets it", async () => {
+  it("defaults gate_runner to self-hosted (local Actions)", async () => {
     const a = fakeGh();
     await startRun(a.gh, "acme/site", "main", { stage: "staging", commit: "a".repeat(40), action: "deploy", requestedBy: "owner" });
-    expect((a.calls[0] as { inputs: Record<string, string> }).inputs).not.toHaveProperty("gate_runner");
+    expect((a.calls[0] as { inputs: Record<string, string> }).inputs.gate_runner).toBe("self-hosted");
 
     const b = fakeGh();
     await startRun(b.gh, "acme/site", "main", { stage: "staging", commit: "a".repeat(40), action: "deploy", requestedBy: "owner", gateRunner: "self-hosted" });
     expect((b.calls[0] as { inputs: Record<string, string> }).inputs.gate_runner).toBe("self-hosted");
+
+    const c = fakeGh();
+    await startRun(c.gh, "acme/site", "main", { stage: "staging", commit: "a".repeat(40), action: "deploy", requestedBy: "owner", gateRunner: "github" });
+    expect((c.calls[0] as { inputs: Record<string, string> }).inputs.gate_runner).toBe("github");
   });
 
   it("accepts github or self-hosted only", () => {

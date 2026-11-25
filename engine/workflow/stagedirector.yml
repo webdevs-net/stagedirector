@@ -6,7 +6,7 @@
 #
 # What it does
 #   push to the config branch          -> deploys the first stage with `trigger: auto`
-#   workflow_dispatch (from dashboard) -> deploy | rollback | pin | unpin | clear-cache | snapshot
+#   workflow_dispatch (from dashboard) -> deploy | rollback | pin | unpin | clear-cache | snapshot | copy-live
 #
 # Locks, in order (any one refuses the run; see engine/contract.md "Live gate"):
 #   1. Policy comes from stagedirector.yml on the DEFAULT branch, never from the commit
@@ -56,13 +56,13 @@ on:
         required: true
         type: choice
         default: deploy
-        options: [deploy, rollback, pin, unpin, clear-cache, snapshot]
+        options: [deploy, rollback, pin, unpin, clear-cache, snapshot, copy-live]
       requested_by:
         description: Who asked (GitHub login, or claude:<login> for an AI session acting for a person)
         required: true
         type: string
       gate_runner:
-        description: Where "Check rules" runs. self-hosted = a runner labelled sd-gate; anything else = GitHub-hosted
+        description: Where "Check rules" runs. Default is local (self-hosted runner labelled sd-gate). Pass "github" only to use GitHub-hosted minutes.
         required: false
         type: string
 
@@ -84,11 +84,10 @@ concurrency:
 jobs:
   gate:
     name: Check rules
-    # GitHub-hosted by default (needs no host access). gateRunner: self-hosted in stagedirector.yml
-    # (passed by the dashboard), or repo variable STAGEDIRECTOR_GATE_RUNNER=self-hosted for pushes,
-    # runs it on a runner labelled sd-gate instead, which uses no GitHub-hosted minutes. The label is
-    # fixed here, so a caller cannot send this job to a stage's deploy runner.
-    runs-on: ${{ (inputs.gate_runner || vars.STAGEDIRECTOR_GATE_RUNNER) == 'self-hosted' && fromJSON('["self-hosted","sd-gate"]') || 'ubuntu-latest' }}
+    # Local Actions by default (runner labelled sd-gate — no GitHub-hosted minutes). Pass
+    # gate_runner=github (or set repo variable STAGEDIRECTOR_GATE_RUNNER=github) to use ubuntu-latest.
+    # The label is fixed here, so a caller cannot send this job to a stage's deploy runner.
+    runs-on: ${{ (inputs.gate_runner || vars.STAGEDIRECTOR_GATE_RUNNER || 'self-hosted') == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted","sd-gate"]') }}
     timeout-minutes: 10
     outputs:
       go: ${{ steps.gate.outputs.go }}
@@ -159,7 +158,7 @@ jobs:
           fi
           [[ "$STAGE" =~ ^[a-z0-9][a-z0-9_-]{0,39}$ ]] || fail "Stage id '$STAGE' is not valid."
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character lowercase SHA."
-          case "$ACTION" in deploy|rollback|pin|unpin|clear-cache|snapshot) ;; *) fail "Unknown action '$ACTION'." ;; esac
+          case "$ACTION" in deploy|rollback|pin|unpin|clear-cache|snapshot|copy-live) ;; *) fail "Unknown action '$ACTION'." ;; esac
           [[ "$REQUESTED_BY" =~ ^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$ ]] || fail "requested_by '$REQUESTED_BY' is not valid."
           git cat-file -e "$COMMIT^{commit}" 2>/dev/null || git fetch -q origin "$COMMIT" 2>/dev/null || true
           git cat-file -e "$COMMIT^{commit}" 2>/dev/null || fail "Commit $COMMIT is not in this repository."
@@ -176,8 +175,10 @@ jobs:
             rollback) [ -n "$(jq -r '.rollback // empty' <<<"$S")" ] || fail "Stage '$STAGE' has no rollback command." ;;
             clear-cache) [ -n "$(jq -r '.tools.clearCache // empty' "$CFG")" ] || fail "No tools.clearCache command." ;;
             snapshot) [ -n "$(jq -r '.tools.snapshot // empty' "$CFG")" ] || fail "No tools.snapshot command (backup) in stagedirector.yml." ;;
+            copy-live) [ -n "$(jq -r '.tools.copyLiveToStaging // empty' "$CFG")" ] || fail "No tools.copyLiveToStaging command in stagedirector.yml."
+                       [ "$IS_LAST" = false ] || fail "copy-live targets the stage before live (got last stage '$STAGE')." ;;
           esac
-          case "$ACTION" in deploy|rollback|clear-cache|snapshot) [[ "$RUNNER" =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Stage '$STAGE' needs a runner label." ;; esac
+          case "$ACTION" in deploy|rollback|clear-cache|snapshot|copy-live) [[ "$RUNNER" =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Stage '$STAGE' needs a runner label." ;; esac
 
           # ---- who may act -------------------------------------------------------------
           codeowners() { # logins on the last "*" line of CODEOWNERS on the default branch; teams expanded
@@ -454,6 +455,7 @@ jobs:
           ROLLBACK_CMD="$(jq -r '.rollback // empty' <<<"$STAGE_JSON")"
           CLEAR_CMD="$(jq -r '.clearCache // empty' <<<"$TOOLS_JSON")"
           SNAPSHOT_CMD="$(jq -r '.snapshot // empty' <<<"$TOOLS_JSON")"
+          COPY_LIVE_CMD="$(jq -r '.copyLiveToStaging // empty' <<<"$TOOLS_JSON")"
           export STAGEDIRECTOR=1 STAGEDIRECTOR_STAGE="$STAGE" STAGEDIRECTOR_COMMIT="$COMMIT" \
                  STAGEDIRECTOR_ACTOR="$ACTOR" STAGEDIRECTOR_REQUESTED_BY="$REQUESTED_BY" STAGEDIRECTOR_RUN_URL="$RUN_URL" \
                  STAGEDIRECTOR_NO_DOWNTIME="${NO_DOWNTIME:-0}"
@@ -521,6 +523,20 @@ jobs:
             run_cmd snapshot "$(fill "$SNAPSHOT_CMD" "")"; RC=$?
             SNAP_ID="$( { grep -o '^STAGEDIRECTOR_SNAPSHOT=[A-Za-z0-9._:-]*' "$LOG" || true; } | tail -1 | cut -d= -f2)"
             if [ "$RC" -eq 0 ]; then say "Backup of $STAGE saved${SNAP_ID:+ ($SNAP_ID)}."; else say "Backup of $STAGE FAILED (exit $RC). Nothing on the site changed."; fi
+            exit "$RC"
+            ;;
+
+          copy-live)
+            # Live DB/media → this stage (usually staging). Never moves code; deploy stays a separate pipe.
+            [ -n "$COPY_LIVE_CMD" ] || { say "No copyLiveToStaging command."; exit 1; }
+            run_cmd copy-live "$(fill "$COPY_LIVE_CMD" "")"; RC=$?
+            if [ "$RC" -eq 0 ]; then
+              say "Copied live data into $STAGE."
+              smoke || { say "Smoke test failed after copy-live on $STAGE."; exit 1; }
+              clear_cache
+              exit 0
+            fi
+            say "Copy live → $STAGE FAILED (exit $RC). Staging data may be half-applied; check before retrying."
             exit "$RC"
             ;;
 

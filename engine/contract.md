@@ -41,7 +41,7 @@ Placeholders in `stagedirector.yml` commands: `{backup}`, `{commit}`, `{stage}`.
 `runner: github` = GitHub-hosted `ubuntu-latest`; if the environment has
 `TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` the job joins the tailnet first, and the variable
 `STAGEDIRECTOR_KNOWN_HOSTS` pins host keys. Used with `kits/ssh-compose` (forced-command SSH).
-The rules check runs GitHub-hosted unless `gateRunner: self-hosted` (a runner labelled `sd-gate`).
+The rules check runs on local Actions by default (a runner labelled `sd-gate`). Set `gateRunner: github` only when you want GitHub-hosted minutes instead.
 
 `host: none` in `stagedirector.yml`: the commands reach no host (an app published as a GitHub
 Release, a package registry). The workflow then skips Tailscale, known hosts and the SSH key, so the
@@ -122,6 +122,23 @@ A full backup of one stage as it is now, started by the dashboard's **Save a bac
 on the site. Exit `0` only when the backup is stored off the host; print one line
 `STAGEDIRECTOR_SNAPSHOT=<id>` naming it. Example (WordPress with UpdraftPlus to Backblaze):
 `scripts/deploy.sh backup {stage}` running `wp updraftplus backup --send-to-cloud`.
+
+## `tools.copyLiveToStaging` (Copy live to staging)
+
+Pulls a **minimal valuable slice** of live content into the stage the dashboard
+named, almost always **staging** — not a full database clone. One Toolbox button
+(**Copy live to staging**, `action: copy-live`); there is no second “full dump”
+action. The project script chooses the tables. For Maria’s Place that means what
+she may have edited on live: **users + usermeta**, **posts + postmeta** (pages,
+posts, Divi layouts stored as posts), term tables so those posts still resolve,
+plus enough uploads for images to render. Staging keeps its own `options`
+(URLs, plugins, staging settings). `{stage}` is filled in; `STAGEDIRECTOR_STAGE`
+is that destination. Same who-may rules as a deploy into that stage (developers
+for staging). **No** live approval. **Refused while pinned** (like deploy/rollback).
+Does **not** move code — `deploy` stays a separate pipe. Exit `0` when staging
+holds the copied data and is safe to preview; exit `2` if refused before touching
+anything; exit `1` if the copy failed part-way. Print one line
+`STAGEDIRECTOR_COPY_LIVE=<id>`. Example: `engine/examples/mariasplace/`.
 
 ## `tools.clearCache`
 
@@ -214,7 +231,7 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
 
 1. **Dispatch from the default branch.** A run started on another ref is refused.
 2. **Inputs valid.** Stage id in config, 40-char SHA present in the repo, action one of
-   `deploy|rollback|pin|unpin|clear-cache`.
+   `deploy|rollback|pin|unpin|clear-cache|snapshot|copy-live`.
 3. **Who.**
    - `pushers: none` → always refused.
    - `developers` → `github.actor` has write/maintain/admin.
@@ -222,7 +239,8 @@ summary. All policy is read from `stagedirector.yml` and `CODEOWNERS` on the
      `github.triggering_actor` are listed on the `*` line of CODEOWNERS (teams
      expanded), are not bots; `requested_by` does not start with `claude:`.
      So the dashboard must start live runs with the **person's own** GitHub token.
-4. **Pinned.** `refs/stagedirector/pins/<stage>` exists → deploy/rollback refused.
+4. **Pinned.** `refs/stagedirector/pins/<stage>` exists → deploy/rollback/`copy-live`
+   refused. `clear-cache` and `snapshot` are allowed (they change nothing on the site).
    `pin` creates/moves that ref to the commit; `unpin` deletes it. Same "who" rules.
 5. **Approval of this exact commit** (deploy into code-owners stage). The newest commit
    status with context `stagedirector/approval/<stage>` on the commit must be

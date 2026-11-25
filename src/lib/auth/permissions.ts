@@ -1,6 +1,6 @@
 import type { Approval, ProjectConfig, Role, StageConfig } from "@/lib/types";
 
-export type StageAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "stop" | "approve";
+export type StageAction = "deploy" | "rollback" | "pin" | "unpin" | "clear-cache" | "snapshot" | "copy-live" | "stop" | "approve";
 
 export type Decision =
   | { allowed: true; recordAs: "action" | "request" }
@@ -92,7 +92,7 @@ export function decide(req: ActionRequest): Decision {
     };
   }
 
-  if (req.pinned && (req.action === "deploy" || req.action === "rollback")) {
+  if (req.pinned && (req.action === "deploy" || req.action === "rollback" || req.action === "copy-live")) {
     return { allowed: false, reason: `${stage.name} is pinned. Unpin it first.` };
   }
   if (req.action === "pin" && req.pinned) return { allowed: false, reason: `${stage.name} is already pinned` };
@@ -112,6 +112,9 @@ export function decide(req: ActionRequest): Decision {
   }
   if (req.action === "snapshot" && !req.config.tools?.snapshot) {
     return { allowed: false, reason: "this project has no backup command (tools.snapshot)" };
+  }
+  if (req.action === "copy-live" && !req.config.tools?.copyLiveToStaging) {
+    return { allowed: false, reason: "this project has no copy-live-to-staging command (tools.copyLiveToStaging)" };
   }
   return { allowed: true, recordAs: "action" };
 }

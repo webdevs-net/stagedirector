@@ -1,7 +1,7 @@
 import type { ActivityEvent, StageStatus } from "@/lib/types";
 
 const VERB: Record<ActivityEvent["action"], string> = {
-  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", snapshot: "backed up", check: "checked",
+  push: "updated", approve: "approved", pin: "pinned", unpin: "unpinned", undo: "put back", stop: "paused", request: "asked for review", decline: "request declined", "clear-cache": "cache cleared", snapshot: "backed up", "copy-live": "copied live users and pages", check: "checked",
 };
 
 /** "updated", or what really happened when the run did not pass ("update failed", "updating"…). */
