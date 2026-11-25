@@ -25,7 +25,7 @@ export default async function ToolboxPage({ params, searchParams }: PageProps) {
   const tiles = [
     { t: "Clear cache", d: "Show the newest version", on: !!p.config.tools?.clearCache, icon: ICONS.cache, kind: "clear-cache" as const, stageId: live?.id },
     { t: "Save a backup", d: "Whole site, right now", on: site && !!p.config.tools?.snapshot, icon: ICONS.backup, kind: "snapshot" as const, stageId: live?.id },
-    { t: "Copy live to staging", d: "Real pages and photos", on: site && !!p.config.tools?.copyLiveToStaging && !!staging, icon: ICONS.copy, kind: "copy-live" as const, stageId: staging?.id },
+    { t: "Copy live to staging", d: "Users, pages and posts Maria changed", on: site && !!p.config.tools?.copyLiveToStaging && !!staging, icon: ICONS.copy, kind: "copy-live" as const, stageId: staging?.id },
     { t: "Update plugins", d: "Staging first, then live", on: p.config.kind?.startsWith("WordPress") ?? false, badge: 3, icon: ICONS.plugin, stageId: live?.id },
   ].filter((x) => x.on);
 

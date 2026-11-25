@@ -72,7 +72,7 @@ export function toActiveRun(r: RunInfo, config: ProjectConfig, repo: string, job
   const steps =
     kind === "clear-cache" ? ["Clearing cache", "Making sure the site still loads"]
     : kind === "snapshot" ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"]
-    : kind === "copy-live" ? ["Reading live data", "Copying into staging", "Making sure staging still loads"]
+    : kind === "copy-live" ? ["Reading live users and pages", "Copying into staging", "Making sure staging still loads"]
     : undefined;
   const p = mapProgress(jobs ?? [], steps);
   const running = r.state === "running" || r.state === "queued";

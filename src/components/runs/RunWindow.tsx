@@ -13,7 +13,7 @@ const VERB: Record<ActiveRun["kind"], string> = {
   undo: "Undoing on",
   "clear-cache": "Clearing cache on",
   snapshot: "Backing up",
-  "copy-live": "Copying live data into",
+  "copy-live": "Copying live users and pages into",
 };
 
 function elapsed(r: ActiveRun, now: number) {

@@ -5,18 +5,21 @@ Two pipes stay separate:
 | Pipe | What moves | Stage Director action |
 |------|------------|------------------------|
 | Code | git / rsync of theme, plugins, mu-plugins | Update staging → Put live |
-| Data | DB tables + uploads/media | Copy live to staging (and later the reverse for cutover) |
+| Data | Valuable live rows only (users, pages/posts + meta) | Copy live to staging (and later the reverse for cutover) |
 
 `scripts/deploy.sh` never deletes obsolete plugins/themes on the host and never
-moves WordPress options, Divi layouts, users, or registrations. Previewed lean
-code and previewed live data must both land on purpose.
+moves WordPress data. **Copy live to staging** is one button and a *minimal*
+sync: users, pages/posts (and their meta/terms), enough media to render — not
+options, not a full DB dump, not a second “everything” button. Previewed lean
+code and that valuable live slice must both land on purpose.
 
 ## Sequence (person-owned)
 
 1. **Backup live** — Toolbox **Save a backup**, or UpdraftPlus / host panel. Do not skip.
 2. **Copy live → staging** — Toolbox **Copy live to staging** (`tools.copyLiveToStaging`).
-   Staging gets recent pages, registrations, and media so you can preview on
-   `https://staging.mariasplace.com/`. Code on staging can already be lean.
+   Staging gets the valuable live slice (users + pages/posts Maria may have
+   changed) so you can preview on `https://staging.mariasplace.com/`. Code on
+   staging can already be lean.
 3. **Preview** — walk the staging site (login, My Account, Contact, new registrations).
    Fix code on staging with normal deploys until it looks right **with live data**.
 4. **Wipe obsolete live plugins/themes** — by hand on Hostinger (or SSH), after the

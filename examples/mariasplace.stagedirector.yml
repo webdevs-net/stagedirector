@@ -45,7 +45,7 @@ checks: # run by the dashboard in the review step and after each run; results go
 tools:
   clearCache: scripts/clear-cache.sh
   syncCheck: scripts/deploy.sh drift
-  # Live DB/media → staging (not code). See engine/examples/mariasplace/.
+  # Valuable live slice → staging (users + pages/posts; not a full DB). See engine/examples/mariasplace/.
   copyLiveToStaging: scripts/copy-live-to-staging.sh
 liveTodo:
   - Full backup of live first

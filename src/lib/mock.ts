@@ -368,7 +368,7 @@ export async function startRun(repo: string, stageId: string, kind: RunKind): Pr
         : kind === "snapshot"
           ? ["Starting the backup", "Copying files and database", "Sending to cloud storage"]
           : kind === "copy-live"
-            ? ["Reading live data", "Copying into staging", "Making sure staging still loads"]
+            ? ["Reading live users and pages", "Copying into staging", "Making sure staging still loads"]
             : RUN_STEPS,
     progress: 0,
     state: "running",

@@ -31,7 +31,7 @@ export interface ProjectConfig {
   tools?: {
     clearCache?: string;      // command
     syncCheck?: string;       // command, prints changed paths
-    copyLiveToStaging?: string; // live DB/media → staging (not code); action: copy-live
+    copyLiveToStaging?: string; // valuable live slice → staging (not full DB, not code); action: copy-live
     snapshot?: string;        // e.g. a Kopia command
   };
   liveTodo?: string[];        // manual steps to repeat after a live push

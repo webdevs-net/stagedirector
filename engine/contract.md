@@ -125,18 +125,20 @@ on the site. Exit `0` only when the backup is stored off the host; print one lin
 
 ## `tools.copyLiveToStaging` (Copy live to staging)
 
-Pulls **live content** (database rows, uploads/media — whatever the project script
-defines) into the stage the dashboard named, almost always **staging**. Started by
-Toolbox **Copy live to staging** (`action: copy-live`). `{stage}` is filled in;
-`STAGEDIRECTOR_STAGE` is that destination stage. Same who-may rules as a deploy into
-that stage (developers for staging). **No** live approval. **Refused while pinned**
-(like deploy/rollback). Does **not** move code — `deploy` stays a separate pipe.
-Exit `0` when staging holds the copied data and is safe to preview; exit `2` if
-refused before touching anything (wrong stage, missing `STAGEDIRECTOR`, etc.);
-exit `1` if the copy failed part-way. Print one line
-`STAGEDIRECTOR_COPY_LIVE=<id>` naming the sync (timestamp or dump id). Example
-(WordPress on Hostinger): `scripts/copy-live-to-staging.sh` — see
-`engine/examples/mariasplace/`.
+Pulls a **minimal valuable slice** of live content into the stage the dashboard
+named, almost always **staging** — not a full database clone. One Toolbox button
+(**Copy live to staging**, `action: copy-live`); there is no second “full dump”
+action. The project script chooses the tables. For Maria’s Place that means what
+she may have edited on live: **users + usermeta**, **posts + postmeta** (pages,
+posts, Divi layouts stored as posts), term tables so those posts still resolve,
+plus enough uploads for images to render. Staging keeps its own `options`
+(URLs, plugins, staging settings). `{stage}` is filled in; `STAGEDIRECTOR_STAGE`
+is that destination. Same who-may rules as a deploy into that stage (developers
+for staging). **No** live approval. **Refused while pinned** (like deploy/rollback).
+Does **not** move code — `deploy` stays a separate pipe. Exit `0` when staging
+holds the copied data and is safe to preview; exit `2` if refused before touching
+anything; exit `1` if the copy failed part-way. Print one line
+`STAGEDIRECTOR_COPY_LIVE=<id>`. Example: `engine/examples/mariasplace/`.
 
 ## `tools.clearCache`
 
